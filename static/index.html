@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rotation Calendar Subscription</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2234;
+            --accent-primary: #06b6d4;
+            --accent-secondary: #22d3ee;
+            --accent-glow: rgba(6, 182, 212, 0.3);
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: #2d3748;
+            --success: #10b981;
+            --error: #ef4444;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            background-image: 
+                radial-gradient(ellipse at top, rgba(6, 182, 212, 0.08) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+        }
+
+        .container {
+            max-width: 560px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .logo {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, var(--accent-primary), #6366f1);
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            box-shadow: 0 8px 32px var(--accent-glow);
+        }
+
+        .logo svg {
+            width: 36px;
+            height: 36px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 1.875rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .search-container {
+            position: relative;
+        }
+
+        .search-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            pointer-events: none;
+        }
+
+        #resident-search {
+            width: 100%;
+            padding: 1rem 1rem 1rem 3rem;
+            font-size: 1rem;
+            font-family: inherit;
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        #resident-search:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 0 4px var(--accent-glow);
+        }
+
+        #resident-search::placeholder {
+            color: var(--text-muted);
+        }
+
+        .dropdown {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        .dropdown.active {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 0.875rem 1rem;
+            cursor: pointer;
+            transition: background 0.15s ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .dropdown-item:last-child {
+            border-bottom: none;
+        }
+
+        .dropdown-item:hover,
+        .dropdown-item.selected {
+            background: rgba(6, 182, 212, 0.1);
+        }
+
+        .dropdown-item.selected {
+            color: var(--accent-secondary);
+        }
+
+        .no-results {
+            padding: 1rem;
+            text-align: center;
+            color: var(--text-muted);
+        }
+
+        .result-section {
+            display: none;
+            margin-top: 2rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .result-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .selected-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .selected-name::before {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+        }
+
+        .url-container {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 0.875rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .url-text {
+            flex: 1;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            word-break: break-all;
+            line-height: 1.4;
+        }
+
+        .copy-btn {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 0.625rem 1rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .copy-btn:hover {
+            background: var(--accent-secondary);
+            transform: translateY(-1px);
+        }
+
+        .copy-btn.copied {
+            background: var(--success);
+        }
+
+        .instructions {
+            margin-top: 1.5rem;
+        }
+
+        .instructions h3 {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        .instruction-list {
+            list-style: none;
+        }
+
+        .instruction-list li {
+            position: relative;
+            padding-left: 1.75rem;
+            margin-bottom: 0.875rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .instruction-list li::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 0;
+            width: 1.25rem;
+            height: 1.25rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        .platform-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .platform-tab {
+            padding: 0.5rem 1rem;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .platform-tab.active {
+            background: var(--accent-primary);
+            border-color: var(--accent-primary);
+            color: white;
+        }
+
+        .platform-tab:hover:not(.active) {
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+
+        .platform-instructions {
+            display: none;
+        }
+
+        .platform-instructions.active {
+            display: block;
+        }
+
+        footer {
+            margin-top: auto;
+            padding-top: 3rem;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.75rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--error);
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            </div>
+            <h1>Rotation Calendar</h1>
+            <p class="subtitle">Subscribe to your personalized schedule</p>
+        </header>
+
+        <div class="card">
+            <div class="search-container">
+                <label class="search-label">Find your name</label>
+                <div class="search-input-wrapper">
+                    <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <path d="m21 21-4.3-4.3"></path>
+                    </svg>
+                    <input type="text" id="resident-search" placeholder="Start typing your name..." autocomplete="off">
+                    <div class="dropdown" id="dropdown"></div>
+                </div>
+            </div>
+
+            <div class="result-section" id="result-section">
+                <div class="selected-name" id="selected-name"></div>
+                
+                <div class="url-container">
+                    <span class="url-text" id="calendar-url"></span>
+                    <button class="copy-btn" id="copy-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                        </svg>
+                        Copy
+                    </button>
+                </div>
+
+                <div class="instructions">
+                    <h3>How to subscribe</h3>
+                    
+                    <div class="platform-tabs">
+                        <button class="platform-tab active" data-platform="ios">iOS</button>
+                        <button class="platform-tab" data-platform="google">Google</button>
+                        <button class="platform-tab" data-platform="outlook">Outlook</button>
+                    </div>
+
+                    <div class="platform-instructions active" data-platform="ios">
+                        <ol class="instruction-list">
+                            <li data-step="1">Copy the subscription URL above</li>
+                            <li data-step="2">Open Settings → Calendar → Accounts</li>
+                            <li data-step="3">Tap "Add Account" → "Other"</li>
+                            <li data-step="4">Select "Add Subscribed Calendar"</li>
+                            <li data-step="5">Paste the URL and tap "Next"</li>
+                        </ol>
+                    </div>
+
+                    <div class="platform-instructions" data-platform="google">
+                        <ol class="instruction-list">
+                            <li data-step="1">Copy the subscription URL above</li>
+                            <li data-step="2">Go to calendar.google.com</li>
+                            <li data-step="3">Click the + next to "Other calendars"</li>
+                            <li data-step="4">Select "From URL"</li>
+                            <li data-step="5">Paste the URL and click "Add calendar"</li>
+                        </ol>
+                    </div>
+
+                    <div class="platform-instructions" data-platform="outlook">
+                        <ol class="instruction-list">
+                            <li data-step="1">Copy the subscription URL above</li>
+                            <li data-step="2">Open Outlook Calendar</li>
+                            <li data-step="3">Click "Add calendar" → "Subscribe from web"</li>
+                            <li data-step="4">Paste the URL</li>
+                            <li data-step="5">Name your calendar and click "Import"</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="card loading" style="display: none;">
+            <div class="spinner"></div>
+            <span>Loading residents...</span>
+        </div>
+
+        <div id="error" class="card error-message" style="display: none;"></div>
+    </div>
+
+    <footer>
+        <p>Residency Rotation Calendar Subscription</p>
+    </footer>
+
+    <script>
+        const searchInput = document.getElementById('resident-search');
+        const dropdown = document.getElementById('dropdown');
+        const resultSection = document.getElementById('result-section');
+        const selectedNameEl = document.getElementById('selected-name');
+        const calendarUrlEl = document.getElementById('calendar-url');
+        const copyBtn = document.getElementById('copy-btn');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+
+        let residents = [];
+        let selectedIndex = -1;
+
+        // Get base URL for calendar subscriptions
+        const baseUrl = window.location.origin;
+
+        // Fetch residents on load
+        async function loadResidents() {
+            loadingEl.style.display = 'flex';
+            errorEl.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/residents');
+                if (!response.ok) throw new Error('Failed to load residents');
+                
+                const data = await response.json();
+                residents = data.residents;
+                loadingEl.style.display = 'none';
+            } catch (err) {
+                loadingEl.style.display = 'none';
+                errorEl.style.display = 'block';
+                errorEl.textContent = 'Failed to load resident list. Please refresh the page.';
+                console.error(err);
+            }
+        }
+
+        // Filter and display dropdown
+        function filterResidents(query) {
+            if (!query.trim()) {
+                dropdown.classList.remove('active');
+                return;
+            }
+
+            const filtered = residents.filter(name => 
+                name.toLowerCase().includes(query.toLowerCase())
+            );
+
+            if (filtered.length === 0) {
+                dropdown.innerHTML = '<div class="no-results">No matching residents found</div>';
+            } else {
+                dropdown.innerHTML = filtered.map((name, index) => 
+                    `<div class="dropdown-item" data-name="${name}">${highlightMatch(name, query)}</div>`
+                ).join('');
+            }
+
+            dropdown.classList.add('active');
+            selectedIndex = -1;
+        }
+
+        // Highlight matching text
+        function highlightMatch(name, query) {
+            const regex = new RegExp(`(${escapeRegExp(query)})`, 'gi');
+            return name.replace(regex, '<strong>$1</strong>');
+        }
+
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // Select a resident
+        function selectResident(name) {
+            searchInput.value = name;
+            dropdown.classList.remove('active');
+            
+            // Show result section
+            selectedNameEl.textContent = name;
+            const calendarUrl = `${baseUrl}/api/calendar/${encodeURIComponent(name)}.ics`;
+            calendarUrlEl.textContent = calendarUrl;
+            resultSection.classList.add('active');
+            
+            // Reset copy button
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+                Copy
+            `;
+        }
+
+        // Event listeners
+        searchInput.addEventListener('input', (e) => {
+            filterResidents(e.target.value);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            if (searchInput.value.trim()) {
+                filterResidents(searchInput.value);
+            }
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            const items = dropdown.querySelectorAll('.dropdown-item');
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+                updateSelectedItem(items);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, 0);
+                updateSelectedItem(items);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (selectedIndex >= 0 && items[selectedIndex]) {
+                    selectResident(items[selectedIndex].dataset.name);
+                }
+            } else if (e.key === 'Escape') {
+                dropdown.classList.remove('active');
+            }
+        });
+
+        function updateSelectedItem(items) {
+            items.forEach((item, index) => {
+                item.classList.toggle('selected', index === selectedIndex);
+            });
+            if (items[selectedIndex]) {
+                items[selectedIndex].scrollIntoView({ block: 'nearest' });
+            }
+        }
+
+        dropdown.addEventListener('click', (e) => {
+            const item = e.target.closest('.dropdown-item');
+            if (item) {
+                selectResident(item.dataset.name);
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+                dropdown.classList.remove('active');
+            }
+        });
+
+        // Copy button
+        copyBtn.addEventListener('click', async () => {
+            const url = calendarUrlEl.textContent;
+            
+            try {
+                await navigator.clipboard.writeText(url);
+                copyBtn.classList.add('copied');
+                copyBtn.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    Copied!
+                `;
+                
+                setTimeout(() => {
+                    copyBtn.classList.remove('copied');
+                    copyBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                        </svg>
+                        Copy
+                    `;
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+            }
+        });
+
+        // Platform tabs
+        document.querySelectorAll('.platform-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const platform = tab.dataset.platform;
+                
+                document.querySelectorAll('.platform-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.platform-instructions').forEach(i => i.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.querySelector(`.platform-instructions[data-platform="${platform}"]`).classList.add('active');
+            });
+        });
+
+        // Initialize
+        loadResidents();
+    </script>
+</body>
+</html>
+
