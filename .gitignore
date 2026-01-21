@@ -26,3 +26,11 @@ Thumbs.db
 .env
 *.local
 
+# Database
+*.db
+*.sqlite3
+
+# Alembic
+alembic/versions/*.py
+!alembic/versions/.gitkeep
+

@@ -1,0 +1,1359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Rotation Calendar</title>
+    <style>
+        :root {
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2234;
+            --accent-primary: #06b6d4;
+            --accent-secondary: #22d3ee;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: #2d3748;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding-bottom: 70px;
+        }
+
+        /* Header */
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+        }
+
+        .header-user {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* Main Content */
+        .main {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.75rem;
+        }
+
+        /* Today's Schedule Card */
+        .today-card {
+            background: linear-gradient(135deg, var(--bg-card) 0%, #1e2d4a 100%);
+            border: 1px solid var(--accent-primary);
+        }
+
+        .today-date {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .today-rotation {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 1rem 0;
+        }
+
+        .rotation-badge {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1.125rem;
+        }
+
+        .today-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .detail-item {
+            text-align: center;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .detail-value {
+            font-weight: 600;
+        }
+
+        /* Call Status Badge */
+        .call-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .call-on { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+        .call-pre { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .call-post { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+
+        /* Week Preview */
+        .week-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 0.25rem;
+        }
+
+        .week-day {
+            text-align: center;
+            padding: 0.5rem 0.25rem;
+            border-radius: 8px;
+            background: var(--bg-secondary);
+        }
+
+        .week-day.today {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .week-day-name {
+            font-size: 0.625rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .week-day-num {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin: 0.25rem 0;
+        }
+
+        .week-day-rot {
+            font-size: 0.625rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Schedule List */
+        .schedule-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .schedule-item:last-child {
+            border-bottom: none;
+        }
+
+        .schedule-date {
+            width: 60px;
+            text-align: center;
+        }
+
+        .schedule-date-day {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .schedule-date-num {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .schedule-info {
+            flex: 1;
+            padding-left: 1rem;
+        }
+
+        .schedule-rotation {
+            font-weight: 600;
+        }
+
+        .schedule-details {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* Call Schedule */
+        .call-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .call-section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .call-person {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .call-name {
+            font-weight: 500;
+        }
+
+        .call-pgy {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        /* Swap List */
+        .swap-item {
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.75rem;
+        }
+
+        .swap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .swap-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .swap-status.pending { background: rgba(100, 116, 139, 0.2); color: var(--text-secondary); }
+        .swap-status.peer_confirmed { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .swap-status.approved { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .swap-status.rejected { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+
+        .swap-details {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 0.5rem;
+            align-items: center;
+            font-size: 0.875rem;
+        }
+
+        .swap-arrow {
+            color: var(--accent-primary);
+            font-size: 1.25rem;
+        }
+
+        .swap-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-secondary);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-error {
+            background: var(--error);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        .btn-block {
+            width: 100%;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+        }
+
+        /* Bottom Navigation */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-around;
+            padding: 0.5rem 0;
+            z-index: 100;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.625rem;
+            cursor: pointer;
+        }
+
+        .nav-item.active {
+            color: var(--accent-primary);
+        }
+
+        .nav-icon {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .nav-badge {
+            position: absolute;
+            top: 0;
+            right: 0.5rem;
+            background: var(--error);
+            color: white;
+            font-size: 0.625rem;
+            padding: 0.125rem 0.375rem;
+            border-radius: 9999px;
+        }
+
+        /* Calendar Grid */
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .calendar-month {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .calendar-nav {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+
+        .calendar-day-header {
+            text-align: center;
+            padding: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .calendar-day:hover {
+            background: var(--bg-card);
+        }
+
+        .calendar-day.other-month {
+            opacity: 0.3;
+        }
+
+        .calendar-day.today {
+            border: 2px solid var(--accent-primary);
+        }
+
+        .calendar-day.has-event::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+        }
+
+        .calendar-day-num {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        /* Date Picker */
+        .date-picker {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        /* Resident Search */
+        .search-box {
+            position: relative;
+            margin-bottom: 1rem;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            font-size: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+        }
+
+        .resident-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+        }
+
+        .resident-item:hover {
+            background: var(--bg-card);
+        }
+
+        /* Calendar Subscribe */
+        .subscribe-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+
+        .subscribe-url {
+            background: var(--bg-secondary);
+            padding: 0.75rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            word-break: break-all;
+            margin: 1rem 0;
+        }
+
+        /* Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.75);
+            z-index: 200;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: 16px 16px 0 0;
+            width: 100%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .modal-body {
+            padding: 1rem;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-card);
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 300;
+            display: none;
+        }
+
+        .toast.show {
+            display: block;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { transform: translate(-50%, 100%); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        /* Loading */
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Utilities */
+        .text-muted { color: var(--text-muted); }
+        .text-center { text-align: center; }
+        .mt-1 { margin-top: 0.5rem; }
+        .mt-2 { margin-top: 1rem; }
+        .mb-1 { margin-bottom: 0.5rem; }
+        .mb-2 { margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="header-title">Rotation Calendar</div>
+            <div class="header-user" id="residentName">Loading...</div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- Home Tab -->
+        <div id="home" class="tab-content active">
+            <!-- Today's Schedule -->
+            <div class="card today-card">
+                <div class="card-title">Today</div>
+                <div class="today-date" id="todayDate">Loading...</div>
+                <div class="today-rotation" id="todayRotation">
+                    <div class="spinner"></div>
+                </div>
+                <div class="today-details" id="todayDetails" style="display: none;">
+                    <div class="detail-item">
+                        <div class="detail-label">Time</div>
+                        <div class="detail-value" id="todayTime">--</div>
+                    </div>
+                    <div class="detail-item">
+                        <div class="detail-label">Attending</div>
+                        <div class="detail-value" id="todayAttending">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Call Status -->
+            <div class="card" id="callStatusCard" style="display: none;">
+                <div class="card-title">Call Status</div>
+                <div id="callStatus"></div>
+            </div>
+
+            <!-- Week Preview -->
+            <div class="card">
+                <div class="card-title">This Week</div>
+                <div class="week-grid" id="weekPreview">
+                    <div class="spinner" style="grid-column: span 7;"></div>
+                </div>
+            </div>
+
+            <!-- Calendar Subscribe -->
+            <div class="card subscribe-card">
+                <div class="card-title">Subscribe to Calendar</div>
+                <p class="text-muted" style="font-size: 0.875rem;">Add your schedule to Apple Calendar, Google Calendar, or Outlook</p>
+                <div class="subscribe-url" id="calendarUrl">Loading...</div>
+                <button class="btn btn-primary btn-block" id="copyUrlBtn">Copy URL</button>
+            </div>
+        </div>
+
+        <!-- Schedule Tab -->
+        <div id="schedule" class="tab-content">
+            <div class="card">
+                <div class="calendar-header">
+                    <button class="btn btn-secondary btn-sm" id="prevMonth">&lt;</button>
+                    <div class="calendar-month" id="calendarMonth">January 2026</div>
+                    <button class="btn btn-secondary btn-sm" id="nextMonth">&gt;</button>
+                </div>
+                <div class="calendar-grid" id="calendarGrid">
+                    <!-- Calendar will be rendered here -->
+                </div>
+            </div>
+
+            <div class="card" id="selectedDayCard" style="display: none;">
+                <div class="card-title" id="selectedDayTitle">Selected Day</div>
+                <div id="selectedDayContent"></div>
+            </div>
+        </div>
+
+        <!-- On Call Tab -->
+        <div id="oncall" class="tab-content">
+            <div class="date-picker">
+                <button class="btn btn-secondary btn-sm" id="prevDay">&lt;</button>
+                <input type="date" class="form-input" id="callDate" style="flex: 1;">
+                <button class="btn btn-secondary btn-sm" id="nextDay">&gt;</button>
+            </div>
+
+            <div id="callSchedule">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <!-- All Schedules Tab -->
+        <div id="all" class="tab-content">
+            <div class="search-box">
+                <span class="search-icon">&#128269;</span>
+                <input type="text" class="search-input" id="residentSearch" placeholder="Search residents...">
+            </div>
+
+            <div id="residentList">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <!-- Swaps Tab -->
+        <div id="swaps" class="tab-content">
+            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                <button class="btn btn-secondary" id="tabMySwaps" style="flex: 1;">My Requests</button>
+                <button class="btn btn-secondary" id="tabIncoming" style="flex: 1;">For Me</button>
+            </div>
+
+            <div id="swapsList">
+                <div class="spinner"></div>
+            </div>
+
+            <button class="btn btn-primary btn-block mt-2" id="newSwapBtn">Request a Swap</button>
+        </div>
+    </main>
+
+    <!-- Bottom Navigation -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-tab="home">
+            <span class="nav-icon">&#127968;</span>
+            <span>Home</span>
+        </div>
+        <div class="nav-item" data-tab="schedule">
+            <span class="nav-icon">&#128197;</span>
+            <span>Schedule</span>
+        </div>
+        <div class="nav-item" data-tab="oncall">
+            <span class="nav-icon">&#128222;</span>
+            <span>On Call</span>
+        </div>
+        <div class="nav-item" data-tab="all">
+            <span class="nav-icon">&#128101;</span>
+            <span>All</span>
+        </div>
+        <div class="nav-item" data-tab="swaps" style="position: relative;">
+            <span class="nav-icon">&#128260;</span>
+            <span>Swaps</span>
+            <span class="nav-badge" id="swapBadge" style="display: none;">0</span>
+        </div>
+    </nav>
+
+    <!-- Modal -->
+    <div class="modal-overlay" id="modal">
+        <div class="modal">
+            <div class="modal-header">
+                <div class="modal-title" id="modalTitle">Modal</div>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ===== Configuration =====
+        let residentToken = null;
+        let residentData = null;
+        let currentMonth = new Date();
+
+        // Get token from URL or localStorage
+        const urlParams = new URLSearchParams(window.location.search);
+        residentToken = urlParams.get('token') || localStorage.getItem('resident_token');
+
+        if (!residentToken) {
+            // Show token input modal
+            document.body.innerHTML = `
+                <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem;">
+                    <div class="card" style="max-width: 400px; width: 100%;">
+                        <h2 style="margin-bottom: 1rem;">Welcome</h2>
+                        <p class="text-muted mb-2">Enter your calendar token to view your schedule.</p>
+                        <div class="form-group">
+                            <input type="text" class="form-input" id="tokenInput" placeholder="Enter your token">
+                        </div>
+                        <button class="btn btn-primary btn-block" onclick="submitToken()">Continue</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function submitToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            if (token) {
+                localStorage.setItem('resident_token', token);
+                window.location.href = '?token=' + token;
+            }
+        }
+
+        // ===== Utility Functions =====
+        const $ = (sel) => document.querySelector(sel);
+        const $$ = (sel) => document.querySelectorAll(sel);
+
+        async function api(url) {
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Request failed');
+            }
+            return response.json();
+        }
+
+        function formatDate(dateStr) {
+            const date = new Date(dateStr);
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function showToast(message) {
+            const toast = $('#toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function showModal(title, content) {
+            $('#modalTitle').textContent = title;
+            $('#modalBody').innerHTML = content;
+            $('#modal').classList.add('active');
+        }
+
+        function closeModal() {
+            $('#modal').classList.remove('active');
+        }
+
+        $('#modalClose').addEventListener('click', closeModal);
+        $('#modal').addEventListener('click', (e) => {
+            if (e.target === $('#modal')) closeModal();
+        });
+
+        // ===== Navigation =====
+        $$('.nav-item').forEach(item => {
+            item.addEventListener('click', () => {
+                const tab = item.dataset.tab;
+
+                $$('.nav-item').forEach(i => i.classList.remove('active'));
+                $$('.tab-content').forEach(t => t.classList.remove('active'));
+
+                item.classList.add('active');
+                $(`#${tab}`).classList.add('active');
+
+                loadTabData(tab);
+            });
+        });
+
+        async function loadTabData(tab) {
+            switch(tab) {
+                case 'home': await loadHome(); break;
+                case 'schedule': renderCalendar(); break;
+                case 'oncall': await loadCallSchedule(); break;
+                case 'all': await loadAllResidents(); break;
+                case 'swaps': await loadSwaps('mine'); break;
+            }
+        }
+
+        // ===== Home Tab =====
+        async function loadHome() {
+            const today = new Date();
+            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+
+            $('#todayDate').textContent = `${dayNames[today.getDay()]}, ${monthNames[today.getMonth()]} ${today.getDate()}`;
+
+            // Load resident info
+            try {
+                const residents = await api('/api/residents');
+                // For now, just show the first resident or use token
+                $('#residentName').textContent = residentData?.name || 'Resident';
+            } catch (e) {}
+
+            // Load today's schedule (placeholder - would need resident-specific endpoint)
+            $('#todayRotation').innerHTML = `
+                <span class="rotation-badge" style="background: var(--accent-primary);">Schedule</span>
+                <span class="text-muted">View your full schedule in the Calendar tab</span>
+            `;
+            $('#todayDetails').style.display = 'none';
+
+            // Load call status for today
+            try {
+                const callData = await api(`/api/call-schedule?target_date=${today.toISOString().split('T')[0]}`);
+
+                if (callData.on_call.length > 0 || callData.pre_call.length > 0 || callData.post_call.length > 0) {
+                    $('#callStatusCard').style.display = 'block';
+                    let callHtml = '';
+
+                    if (callData.on_call.length > 0) {
+                        callHtml += `<div class="call-badge call-on">On Call: ${callData.on_call.map(c => c.resident_name).join(', ')}</div>`;
+                    }
+
+                    $('#callStatus').innerHTML = callHtml || '<span class="text-muted">No call assignments today</span>';
+                }
+            } catch (e) {
+                $('#callStatusCard').style.display = 'none';
+            }
+
+            // Load week preview
+            await loadWeekPreview();
+
+            // Set calendar URL
+            if (residentToken) {
+                const baseUrl = window.location.origin;
+                const calUrl = `${baseUrl}/api/calendar/${residentToken}.ics`;
+                $('#calendarUrl').textContent = calUrl;
+            }
+
+            // Load pending swaps count
+            await loadSwapBadge();
+        }
+
+        async function loadWeekPreview() {
+            const today = new Date();
+            const startOfWeek = new Date(today);
+            startOfWeek.setDate(today.getDate() - today.getDay());
+
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            let html = '';
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(startOfWeek);
+                date.setDate(startOfWeek.getDate() + i);
+                const isToday = date.toDateString() === today.toDateString();
+
+                html += `
+                    <div class="week-day ${isToday ? 'today' : ''}">
+                        <div class="week-day-name">${dayNames[i]}</div>
+                        <div class="week-day-num">${date.getDate()}</div>
+                        <div class="week-day-rot">-</div>
+                    </div>
+                `;
+            }
+
+            $('#weekPreview').innerHTML = html;
+        }
+
+        async function loadSwapBadge() {
+            if (!residentToken) return;
+            try {
+                const incoming = await api(`/api/swaps/incoming?token=${residentToken}&status=pending`);
+                const badge = $('#swapBadge');
+                if (incoming.length > 0) {
+                    badge.textContent = incoming.length;
+                    badge.style.display = 'block';
+                } else {
+                    badge.style.display = 'none';
+                }
+            } catch (e) {}
+        }
+
+        // Copy URL button
+        $('#copyUrlBtn').addEventListener('click', () => {
+            const url = $('#calendarUrl').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('URL copied to clipboard!');
+            }).catch(() => {
+                showToast('Failed to copy');
+            });
+        });
+
+        // ===== Calendar Tab =====
+        function renderCalendar() {
+            const year = currentMonth.getFullYear();
+            const month = currentMonth.getMonth();
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+
+            $('#calendarMonth').textContent = `${monthNames[month]} ${year}`;
+
+            const firstDay = new Date(year, month, 1);
+            const lastDay = new Date(year, month + 1, 0);
+            const startDay = firstDay.getDay();
+            const totalDays = lastDay.getDate();
+
+            const today = new Date();
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+            let html = dayNames.map(d => `<div class="calendar-day-header">${d}</div>`).join('');
+
+            // Previous month days
+            const prevMonth = new Date(year, month, 0);
+            for (let i = startDay - 1; i >= 0; i--) {
+                const day = prevMonth.getDate() - i;
+                html += `<div class="calendar-day other-month"><div class="calendar-day-num">${day}</div></div>`;
+            }
+
+            // Current month days
+            for (let day = 1; day <= totalDays; day++) {
+                const date = new Date(year, month, day);
+                const isToday = date.toDateString() === today.toDateString();
+                html += `
+                    <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${date.toISOString().split('T')[0]}">
+                        <div class="calendar-day-num">${day}</div>
+                    </div>
+                `;
+            }
+
+            // Next month days
+            const remaining = 42 - (startDay + totalDays);
+            for (let day = 1; day <= remaining; day++) {
+                html += `<div class="calendar-day other-month"><div class="calendar-day-num">${day}</div></div>`;
+            }
+
+            $('#calendarGrid').innerHTML = html;
+
+            // Add click handlers
+            $$('.calendar-day:not(.other-month)').forEach(day => {
+                day.addEventListener('click', () => selectDay(day.dataset.date));
+            });
+        }
+
+        async function selectDay(dateStr) {
+            $('#selectedDayCard').style.display = 'block';
+            $('#selectedDayTitle').textContent = formatDate(dateStr);
+
+            try {
+                const callData = await api(`/api/call-schedule?target_date=${dateStr}`);
+                let content = '';
+
+                if (callData.pre_call.length > 0) {
+                    content += `<div class="mb-1"><span class="call-badge call-pre">Pre-Call</span></div>`;
+                    callData.pre_call.forEach(c => {
+                        content += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                }
+
+                if (callData.on_call.length > 0) {
+                    content += `<div class="mb-1 mt-1"><span class="call-badge call-on">On Call</span></div>`;
+                    callData.on_call.forEach(c => {
+                        content += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                }
+
+                if (callData.post_call.length > 0) {
+                    content += `<div class="mb-1 mt-1"><span class="call-badge call-post">Post-Call</span></div>`;
+                    callData.post_call.forEach(c => {
+                        content += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                }
+
+                if (!content) {
+                    content = '<p class="text-muted text-center">No call schedule for this day</p>';
+                }
+
+                $('#selectedDayContent').innerHTML = content;
+            } catch (e) {
+                $('#selectedDayContent').innerHTML = '<p class="text-muted">Failed to load schedule</p>';
+            }
+        }
+
+        $('#prevMonth').addEventListener('click', () => {
+            currentMonth.setMonth(currentMonth.getMonth() - 1);
+            renderCalendar();
+        });
+
+        $('#nextMonth').addEventListener('click', () => {
+            currentMonth.setMonth(currentMonth.getMonth() + 1);
+            renderCalendar();
+        });
+
+        // ===== On Call Tab =====
+        async function loadCallSchedule() {
+            const dateInput = $('#callDate');
+            if (!dateInput.value) {
+                dateInput.value = new Date().toISOString().split('T')[0];
+            }
+
+            const targetDate = dateInput.value;
+
+            try {
+                const data = await api(`/api/call-schedule?target_date=${targetDate}`);
+                let html = '';
+
+                html += `<div class="call-section">
+                    <div class="call-section-title"><span class="call-badge call-pre">Pre-Call</span></div>`;
+                if (data.pre_call.length > 0) {
+                    data.pre_call.forEach(c => {
+                        html += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                } else {
+                    html += '<p class="text-muted" style="padding: 0.5rem;">None</p>';
+                }
+                html += '</div>';
+
+                html += `<div class="call-section">
+                    <div class="call-section-title"><span class="call-badge call-on">On Call</span></div>`;
+                if (data.on_call.length > 0) {
+                    data.on_call.forEach(c => {
+                        html += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                } else {
+                    html += '<p class="text-muted" style="padding: 0.5rem;">None</p>';
+                }
+                html += '</div>';
+
+                html += `<div class="call-section">
+                    <div class="call-section-title"><span class="call-badge call-post">Post-Call</span></div>`;
+                if (data.post_call.length > 0) {
+                    data.post_call.forEach(c => {
+                        html += `<div class="call-person"><span class="call-name">${c.resident_name}</span><span class="call-pgy">${c.pgy_level}</span></div>`;
+                    });
+                } else {
+                    html += '<p class="text-muted" style="padding: 0.5rem;">None</p>';
+                }
+                html += '</div>';
+
+                $('#callSchedule').innerHTML = html;
+            } catch (e) {
+                $('#callSchedule').innerHTML = '<div class="empty-state">Failed to load call schedule</div>';
+            }
+        }
+
+        $('#callDate').addEventListener('change', loadCallSchedule);
+
+        $('#prevDay').addEventListener('click', () => {
+            const date = new Date($('#callDate').value);
+            date.setDate(date.getDate() - 1);
+            $('#callDate').value = date.toISOString().split('T')[0];
+            loadCallSchedule();
+        });
+
+        $('#nextDay').addEventListener('click', () => {
+            const date = new Date($('#callDate').value);
+            date.setDate(date.getDate() + 1);
+            $('#callDate').value = date.toISOString().split('T')[0];
+            loadCallSchedule();
+        });
+
+        // ===== All Residents Tab =====
+        let allResidents = [];
+
+        async function loadAllResidents() {
+            try {
+                const data = await api('/api/residents');
+                allResidents = data.residents || [];
+                renderResidentList(allResidents);
+            } catch (e) {
+                $('#residentList').innerHTML = '<div class="empty-state">Failed to load residents</div>';
+            }
+        }
+
+        function renderResidentList(residents) {
+            if (residents.length === 0) {
+                $('#residentList').innerHTML = '<div class="empty-state">No residents found</div>';
+                return;
+            }
+
+            $('#residentList').innerHTML = residents.map(name => `
+                <div class="resident-item" onclick="viewResident('${name}')">
+                    <span>${name}</span>
+                    <span style="color: var(--text-muted);">&gt;</span>
+                </div>
+            `).join('');
+        }
+
+        function viewResident(name) {
+            showToast(`Viewing ${name}'s schedule`);
+            // In a full implementation, this would show the resident's schedule
+        }
+
+        $('#residentSearch').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            const filtered = allResidents.filter(name => name.toLowerCase().includes(query));
+            renderResidentList(filtered);
+        });
+
+        // ===== Swaps Tab =====
+        let swapView = 'mine';
+
+        $('#tabMySwaps').addEventListener('click', () => {
+            swapView = 'mine';
+            $('#tabMySwaps').classList.add('btn-primary');
+            $('#tabMySwaps').classList.remove('btn-secondary');
+            $('#tabIncoming').classList.remove('btn-primary');
+            $('#tabIncoming').classList.add('btn-secondary');
+            loadSwaps('mine');
+        });
+
+        $('#tabIncoming').addEventListener('click', () => {
+            swapView = 'incoming';
+            $('#tabIncoming').classList.add('btn-primary');
+            $('#tabIncoming').classList.remove('btn-secondary');
+            $('#tabMySwaps').classList.remove('btn-primary');
+            $('#tabMySwaps').classList.add('btn-secondary');
+            loadSwaps('incoming');
+        });
+
+        async function loadSwaps(type) {
+            if (!residentToken) {
+                $('#swapsList').innerHTML = '<div class="empty-state">Please enter your token to view swaps</div>';
+                return;
+            }
+
+            try {
+                const endpoint = type === 'mine' ? 'mine' : 'incoming';
+                const swaps = await api(`/api/swaps/${endpoint}?token=${residentToken}`);
+
+                if (swaps.length === 0) {
+                    $('#swapsList').innerHTML = `<div class="empty-state">No ${type === 'mine' ? 'outgoing' : 'incoming'} swap requests</div>`;
+                    return;
+                }
+
+                $('#swapsList').innerHTML = swaps.map(s => `
+                    <div class="swap-item">
+                        <div class="swap-header">
+                            <span>${type === 'mine' ? 'To' : 'From'}: ${type === 'mine' ? s.target_name : s.requester_name}</span>
+                            <span class="swap-status ${s.status}">${formatStatus(s.status)}</span>
+                        </div>
+                        <div class="swap-details">
+                            <div>
+                                <strong>${s.requester_rotation || 'N/A'}</strong>
+                                <br><small class="text-muted">${s.requester_week ? formatDate(s.requester_week) : ''}</small>
+                            </div>
+                            <div class="swap-arrow">&#8596;</div>
+                            <div style="text-align: right;">
+                                <strong>${s.target_rotation || 'N/A'}</strong>
+                                <br><small class="text-muted">${s.target_week ? formatDate(s.target_week) : ''}</small>
+                            </div>
+                        </div>
+                        ${s.status === 'pending' && type === 'incoming' ? `
+                            <div class="swap-actions">
+                                <button class="btn btn-success btn-sm" onclick="confirmSwap(${s.id})">Accept</button>
+                                <button class="btn btn-error btn-sm" onclick="declineSwap(${s.id})">Decline</button>
+                            </div>
+                        ` : ''}
+                        ${s.status === 'pending' && type === 'mine' ? `
+                            <div class="swap-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="cancelSwap(${s.id})">Cancel</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `).join('');
+            } catch (e) {
+                $('#swapsList').innerHTML = '<div class="empty-state">Failed to load swaps</div>';
+            }
+        }
+
+        function formatStatus(status) {
+            switch(status) {
+                case 'pending': return 'Awaiting Response';
+                case 'peer_confirmed': return 'Awaiting Admin';
+                case 'approved': return 'Approved';
+                case 'rejected': return 'Declined';
+                case 'cancelled': return 'Cancelled';
+                default: return status;
+            }
+        }
+
+        async function confirmSwap(id) {
+            try {
+                await fetch(`/api/swaps/${id}/confirm?token=${residentToken}`, { method: 'POST' });
+                showToast('Swap confirmed! Awaiting admin approval.');
+                loadSwaps('incoming');
+                loadSwapBadge();
+            } catch (e) {
+                showToast('Failed to confirm swap');
+            }
+        }
+
+        async function declineSwap(id) {
+            try {
+                await fetch(`/api/swaps/${id}/decline?token=${residentToken}`, { method: 'POST' });
+                showToast('Swap declined');
+                loadSwaps('incoming');
+                loadSwapBadge();
+            } catch (e) {
+                showToast('Failed to decline swap');
+            }
+        }
+
+        async function cancelSwap(id) {
+            try {
+                await fetch(`/api/swaps/${id}/cancel?token=${residentToken}`, { method: 'POST' });
+                showToast('Swap cancelled');
+                loadSwaps('mine');
+            } catch (e) {
+                showToast('Failed to cancel swap');
+            }
+        }
+
+        $('#newSwapBtn').addEventListener('click', () => {
+            showModal('Request a Swap', `
+                <p class="text-muted mb-2">To request a swap, please contact the other resident directly and have them submit the request, or contact your chief resident.</p>
+                <button class="btn btn-secondary btn-block" onclick="closeModal()">Close</button>
+            `);
+        });
+
+        // ===== Initialize =====
+        if (residentToken) {
+            loadHome();
+        }
+    </script>
+</body>
+</html>

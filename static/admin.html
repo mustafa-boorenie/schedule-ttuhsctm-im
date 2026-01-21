@@ -1,0 +1,2400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Portal - Rotation Calendar</title>
+    <style>
+        :root {
+            --bg-primary: #0a0f1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a2234;
+            --bg-hover: #243044;
+            --accent-primary: #06b6d4;
+            --accent-secondary: #22d3ee;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --border-color: #2d3748;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        /* ===== Navigation ===== */
+        .nav {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-brand {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: var(--accent-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: all 0.15s;
+        }
+
+        .nav-link:hover { color: var(--text-primary); background: var(--bg-card); }
+        .nav-link.active { color: var(--accent-primary); background: var(--bg-card); }
+
+        .nav-user {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .nav-user-email {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .btn-primary { background: var(--accent-primary); color: white; }
+        .btn-primary:hover { background: var(--accent-secondary); }
+        .btn-secondary { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { border-color: var(--accent-primary); }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-danger:hover { opacity: 0.9; }
+        .btn-sm { padding: 0.375rem 0.75rem; font-size: 0.8125rem; }
+        .btn-icon { padding: 0.5rem; }
+
+        /* ===== Main Layout ===== */
+        .main { padding: 1.5rem; }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .page-title { font-size: 1.5rem; font-weight: 600; }
+
+        .page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+        /* ===== Cards ===== */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title { font-size: 1rem; font-weight: 600; }
+        .card-body { padding: 1.25rem; }
+
+        /* ===== Stats Grid ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1.25rem;
+        }
+
+        .stat-value { font-size: 1.75rem; font-weight: 700; color: var(--accent-primary); }
+        .stat-label { color: var(--text-secondary); font-size: 0.875rem; margin-top: 0.25rem; }
+
+        /* ===== Schedule Grid ===== */
+        .grid-container {
+            overflow: auto;
+            max-height: calc(100vh - 220px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+        }
+
+        .schedule-grid {
+            display: grid;
+            min-width: max-content;
+        }
+
+        .grid-header-row {
+            display: contents;
+        }
+
+        .grid-row {
+            display: contents;
+        }
+
+        .grid-cell {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            font-size: 0.8125rem;
+            min-width: 90px;
+            background: var(--bg-secondary);
+        }
+
+        .grid-cell:last-child { border-right: none; }
+
+        .grid-header {
+            background: var(--bg-card);
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .grid-header-week {
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        .grid-resident-name {
+            position: sticky;
+            left: 0;
+            background: var(--bg-card);
+            z-index: 5;
+            min-width: 160px;
+            font-weight: 500;
+        }
+
+        .grid-pgy-header {
+            background: var(--bg-primary);
+            font-weight: 700;
+            color: var(--accent-primary);
+            grid-column: 1 / -1;
+            padding: 0.75rem;
+            position: sticky;
+            left: 0;
+        }
+
+        .grid-assignment {
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.1s;
+            position: relative;
+        }
+
+        .grid-assignment:hover { background: var(--bg-hover); }
+
+        .rotation-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 500;
+            background: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        /* ===== Dropdown Editor ===== */
+        .cell-editor {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+            z-index: 50;
+            min-width: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .cell-editor.active { display: block; }
+
+        .cell-editor-search {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+        }
+
+        .cell-editor-search input {
+            width: 100%;
+            padding: 0.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .cell-editor-search input:focus { outline: none; border-color: var(--accent-primary); }
+
+        .cell-editor-item {
+            padding: 0.625rem 0.75rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .cell-editor-item:hover { background: var(--bg-hover); }
+
+        .cell-editor-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 3px;
+        }
+
+        .cell-editor-clear {
+            color: var(--error);
+            border-top: 1px solid var(--border-color);
+        }
+
+        /* ===== Tables ===== */
+        .table-container { overflow-x: auto; }
+
+        table { width: 100%; border-collapse: collapse; }
+
+        th, td {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.8125rem;
+            text-transform: uppercase;
+            background: var(--bg-secondary);
+            position: sticky;
+            top: 0;
+        }
+
+        tr:hover td { background: var(--bg-hover); }
+
+        /* ===== Badges ===== */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-pending { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+        .badge-success { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+        .badge-error { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+
+        /* ===== Forms ===== */
+        .form-group { margin-bottom: 1rem; }
+        .form-label { display: block; margin-bottom: 0.375rem; font-size: 0.875rem; color: var(--text-secondary); }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 0.625rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent-primary); }
+
+        /* ===== Modal ===== */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+
+        .modal-overlay.active { display: flex; }
+
+        .modal {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-width: 500px;
+            width: 100%;
+            max-height: 90vh;
+            overflow: auto;
+            margin: 1rem;
+        }
+
+        .modal-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title { font-size: 1.125rem; font-weight: 600; }
+        .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.5rem; }
+        .modal-body { padding: 1.25rem; }
+        .modal-footer { padding: 1rem 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+        /* ===== Tab Content ===== */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* ===== Filters ===== */
+        .filters {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+
+        .filter-label {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .filter-select {
+            padding: 0.375rem 0.625rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.8125rem;
+        }
+
+        /* ===== Upload Zone ===== */
+        .upload-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .upload-zone:hover { border-color: var(--accent-primary); background: var(--bg-hover); }
+        .upload-zone.dragover { border-color: var(--accent-primary); background: var(--bg-hover); }
+        .upload-zone-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .upload-zone-text { color: var(--text-secondary); }
+
+        /* ===== Loading ===== */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border-color);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 0.75rem;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ===== Toast ===== */
+        .toast-container {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 300;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .toast {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.875rem 1.25rem;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast-success { border-left: 3px solid var(--success); }
+        .toast-error { border-left: 3px solid var(--error); }
+
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        /* ===== Color Picker ===== */
+        .color-swatch {
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            border: 2px solid var(--border-color);
+            cursor: pointer;
+        }
+
+        /* ===== Empty State ===== */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+        }
+
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="nav">
+        <div class="nav-brand">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Rotation Calendar
+        </div>
+        <div class="nav-links">
+            <a href="#dashboard" class="nav-link active" data-tab="dashboard">Dashboard</a>
+            <a href="#schedule" class="nav-link" data-tab="schedule">Schedule</a>
+            <a href="#residents" class="nav-link" data-tab="residents">Residents</a>
+            <a href="#swaps" class="nav-link" data-tab="swaps">Swaps</a>
+            <a href="#days-off" class="nav-link" data-tab="days-off">Days Off</a>
+            <a href="#amion" class="nav-link" data-tab="amion">Amion</a>
+            <a href="#settings" class="nav-link" data-tab="settings">Settings</a>
+        </div>
+        <div class="nav-user">
+            <span class="nav-user-email" id="adminEmail">Loading...</span>
+            <button class="btn btn-secondary btn-sm" id="logoutBtn">Logout</button>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- ===== Dashboard Tab ===== -->
+        <div id="dashboard" class="tab-content active">
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="statResidents">--</div>
+                    <div class="stat-label">Total Residents</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statRotations">--</div>
+                    <div class="stat-label">Rotation Types</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statSwaps">--</div>
+                    <div class="stat-label">Pending Swaps</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="statAdmins">--</div>
+                    <div class="stat-label">Admin Users</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Activity</h2>
+                </div>
+                <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Action</th>
+                                <th>Entity</th>
+                                <th>Details</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTable">
+                            <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Schedule Tab ===== -->
+        <div id="schedule" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Schedule Grid</h1>
+                <div class="page-actions">
+                    <button class="btn btn-secondary" id="exportBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Export Excel
+                    </button>
+                    <button class="btn btn-primary" id="uploadBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        Upload Excel
+                    </button>
+                </div>
+            </div>
+
+            <div class="filters">
+                <div class="filter-group">
+                    <span class="filter-label">PGY Level:</span>
+                    <select class="filter-select" id="filterPGY">
+                        <option value="">All Levels</option>
+                        <option value="TY">TY</option>
+                        <option value="PGY1">PGY1</option>
+                        <option value="PGY2">PGY2</option>
+                        <option value="PGY3">PGY3</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <span class="filter-label">View:</span>
+                    <select class="filter-select" id="filterWeeks">
+                        <option value="12">12 Weeks</option>
+                        <option value="26">26 Weeks</option>
+                        <option value="52" selected>Full Year</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="card" style="padding: 0;">
+                <div class="grid-container" id="scheduleGrid">
+                    <div class="loading"><div class="spinner"></div>Loading schedule...</div>
+                </div>
+            </div>
+
+            <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
+        </div>
+
+        <!-- ===== Residents Tab ===== -->
+        <div id="residents" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Residents</h1>
+                <button class="btn btn-primary" id="addResidentBtn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/>
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Add Resident
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="table-container" style="max-height: calc(100vh - 280px); overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>PGY Level</th>
+                                <th>Email</th>
+                                <th>Calendar Link</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="residentsTable">
+                            <tr><td colspan="6" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Swaps Tab ===== -->
+        <div id="swaps" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Swap Requests</h1>
+            </div>
+
+            <!-- Stats -->
+            <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                <div class="stat-card">
+                    <div class="stat-value" id="swapsPendingApproval" style="color: var(--warning);">--</div>
+                    <div class="stat-label">Pending Approval</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="swapsAwaitingPeer">--</div>
+                    <div class="stat-label">Awaiting Peer</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="swapsApproved" style="color: var(--success);">--</div>
+                    <div class="stat-label">Approved (30 days)</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="swapsRejected" style="color: var(--error);">--</div>
+                    <div class="stat-label">Rejected (30 days)</div>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card" style="margin-bottom: 1rem; padding: 1rem;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Status</label>
+                        <select class="form-input" id="filterSwapStatus" style="max-width: 180px;">
+                            <option value="peer_confirmed">Pending Approval</option>
+                            <option value="pending">Awaiting Peer</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="">All Statuses</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PGY Swap Rules Info -->
+            <div class="card" style="margin-bottom: 1rem; padding: 1rem; background: var(--bg-secondary);">
+                <div style="display: flex; gap: 2rem; flex-wrap: wrap; font-size: 0.875rem;">
+                    <div>
+                        <strong style="color: var(--accent-primary);">PGY Swap Rules:</strong>
+                    </div>
+                    <div>
+                        <span class="badge badge-secondary">TY</span>
+                        <span class="badge badge-secondary">PGY1</span>
+                        can swap with each other
+                    </div>
+                    <div>
+                        <span class="badge badge-secondary">PGY2</span>
+                        <span class="badge badge-secondary">PGY3</span>
+                        can swap with each other
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Requester</th>
+                                <th>Gives Up</th>
+                                <th>Target</th>
+                                <th>Gives Up</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="swapsTable">
+                            <tr><td colspan="7" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Days Off Tab ===== -->
+        <div id="days-off" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Days Off</h1>
+                <div class="page-actions">
+                    <button class="btn btn-secondary" id="llmParseBtn">AI Parse Text</button>
+                    <button class="btn btn-secondary" id="uploadCsvBtn">Upload CSV</button>
+                    <button class="btn btn-primary" id="addDayOffBtn">Add Day Off</button>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card" style="margin-bottom: 1rem; padding: 1rem;">
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center;">
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Resident</label>
+                        <select class="form-input" id="filterDaysOffResident" style="max-width: 200px;">
+                            <option value="">All Residents</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Type</label>
+                        <select class="form-input" id="filterDaysOffType" style="max-width: 150px;">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label class="form-label" style="font-size: 0.75rem;">Date Range</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="date" class="form-input" id="filterDaysOffStart" style="max-width: 140px;">
+                            <input type="date" class="form-input" id="filterDaysOffEnd" style="max-width: 140px;">
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" id="applyDaysOffFilter" style="margin-top: 1.25rem;">Apply</button>
+                    <button class="btn btn-secondary btn-sm" id="clearDaysOffFilter" style="margin-top: 1.25rem;">Clear</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Resident</th>
+                                <th>Type</th>
+                                <th>Start</th>
+                                <th>End</th>
+                                <th>Notes</th>
+                                <th>Source</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="daysOffTable">
+                            <tr><td colspan="7" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- CSV Upload Section (hidden by default) -->
+            <div id="csvUploadSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h2 class="card-title">CSV Upload</h2>
+                    <button class="btn btn-secondary btn-sm" id="closeCsvSection">Close</button>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">CSV Content</label>
+                        <textarea class="form-input" id="csvContent" rows="10" placeholder="resident_name,start_date,end_date,type,notes
+John Smith,2026-01-15,2026-01-17,Vacation,Family trip
+Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
+                        <small style="color: var(--text-muted);">
+                            <a href="#" id="downloadCsvTemplate" style="color: var(--accent-primary);">Download template</a>
+                        </small>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" id="previewCsvBtn">Preview</button>
+                        <button class="btn btn-primary" id="importCsvBtn" disabled>Import</button>
+                    </div>
+                    <div id="csvPreviewResults" style="margin-top: 1rem;"></div>
+                </div>
+            </div>
+
+            <!-- LLM Parse Section (hidden by default) -->
+            <div id="llmParseSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <h2 class="card-title">AI-Powered Text Parsing</h2>
+                    <button class="btn btn-secondary btn-sm" id="closeLlmSection">Close</button>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Enter natural language text</label>
+                        <textarea class="form-input" id="llmTextInput" rows="6" placeholder="Examples:
+- John Smith is off December 25-27 for vacation
+- Dr. Doe has a conference Feb 15
+- The following residents have vacation Jan 15-17: John Smith, Jane Doe"></textarea>
+                    </div>
+                    <div style="display: flex; gap: 1rem;">
+                        <button class="btn btn-secondary" id="parseLlmBtn">Parse Text</button>
+                        <button class="btn btn-primary" id="importLlmBtn" disabled>Import Parsed</button>
+                    </div>
+                    <div id="llmParseResults" style="margin-top: 1rem;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Amion Tab ===== -->
+        <div id="amion" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Amion Integration</h1>
+                <div class="page-actions">
+                    <button class="btn btn-secondary" id="testScrapeBtn">Test Scrape</button>
+                    <button class="btn btn-primary" id="syncAmionBtn">Sync Now</button>
+                </div>
+            </div>
+
+            <!-- Status Card -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value" id="amionStatus">--</div>
+                    <div class="stat-label">Status</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="amionLastSync">--</div>
+                    <div class="stat-label">Last Sync</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="amionCallCount">--</div>
+                    <div class="stat-label">Call Assignments</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="amionUnmatched">--</div>
+                    <div class="stat-label">Unmatched Names</div>
+                </div>
+            </div>
+
+            <!-- Configuration -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Configuration</h2>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Amion URL</label>
+                        <input type="text" class="form-input" id="amionUrl" placeholder="https://www.amion.com/..." readonly>
+                        <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">Configure in .env file (AMION_BASE_URL)</small>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Daily Sync Hour (24h)</label>
+                        <input type="number" class="form-input" id="amionSyncHour" min="0" max="23" value="3" readonly style="max-width: 100px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Unmatched Names -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Unmatched Names</h2>
+                    <button class="btn btn-secondary btn-sm" id="refreshUnmatchedBtn">Refresh</button>
+                </div>
+                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Amion Name</th>
+                                <th>Suggested Match</th>
+                                <th>Confidence</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unmatchedTable">
+                            <tr><td colspan="4" class="empty-state">No unmatched names</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Sync History -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Sync History</h2>
+                </div>
+                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Started</th>
+                                <th>Status</th>
+                                <th>Records</th>
+                                <th>Errors</th>
+                            </tr>
+                        </thead>
+                        <tbody id="syncHistoryTable">
+                            <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Call Assignments Preview -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Recent Call Assignments</h2>
+                </div>
+                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Resident</th>
+                                <th>Call Type</th>
+                                <th>Service</th>
+                            </tr>
+                        </thead>
+                        <tbody id="callAssignmentsTable">
+                            <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== Settings Tab ===== -->
+        <div id="settings" class="tab-content">
+            <div class="page-header">
+                <h1 class="page-title">Settings</h1>
+            </div>
+
+            <!-- Admin Users -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Admin Users</h2>
+                    <button class="btn btn-primary btn-sm" id="inviteAdminBtn">Invite Admin</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Email</th>
+                                <th>Name</th>
+                                <th>Last Login</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminsTable">
+                            <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Rotations -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Rotation Types</h2>
+                    <button class="btn btn-primary btn-sm" id="addRotationBtn">Add Rotation</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Color</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Overnight</th>
+                                <th>Weekdays Only</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rotationsTable">
+                            <tr><td colspan="7" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Day Off Types -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Day Off Types</h2>
+                    <button class="btn btn-primary btn-sm" id="addDayOffTypeBtn">Add Type</button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Color</th>
+                                <th>System</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dayOffTypesTable">
+                            <tr><td colspan="3" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Modal</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+            <div class="modal-footer" id="modalFooter"></div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Cell Editor Dropdown (positioned dynamically) -->
+    <div class="cell-editor" id="cellEditor">
+        <div class="cell-editor-search">
+            <input type="text" placeholder="Search rotations..." id="cellEditorSearch">
+        </div>
+        <div id="cellEditorItems"></div>
+    </div>
+
+    <script>
+        // ===== Global State =====
+        let currentAdmin = null;
+        let gridData = null;
+        let editingCell = null;
+
+        // ===== Utility Functions =====
+        function $(selector) { return document.querySelector(selector); }
+        function $$(selector) { return document.querySelectorAll(selector); }
+
+        function showToast(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            $('#toastContainer').appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleDateString();
+        }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '-';
+            return new Date(dateStr).toLocaleString();
+        }
+
+        // ===== API Functions =====
+        async function api(endpoint, options = {}) {
+            const response = await fetch(endpoint, {
+                ...options,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...options.headers,
+                },
+            });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+                throw new Error(error.detail || 'Request failed');
+            }
+            return response.json();
+        }
+
+        // ===== Auth =====
+        async function checkAuth() {
+            try {
+                currentAdmin = await api('/api/admin/me');
+                $('#adminEmail').textContent = currentAdmin.email;
+                return true;
+            } catch (e) {
+                window.location.href = '/admin/login';
+                return false;
+            }
+        }
+
+        $('#logoutBtn').addEventListener('click', async () => {
+            await fetch('/api/admin/logout', { method: 'POST' });
+            window.location.href = '/admin/login';
+        });
+
+        // ===== Tab Navigation =====
+        $$('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const tab = link.dataset.tab;
+
+                $$('.nav-link').forEach(l => l.classList.remove('active'));
+                $$('.tab-content').forEach(t => t.classList.remove('active'));
+
+                link.classList.add('active');
+                $(`#${tab}`).classList.add('active');
+
+                loadTabData(tab);
+            });
+        });
+
+        async function loadTabData(tab) {
+            switch(tab) {
+                case 'dashboard': await loadDashboard(); break;
+                case 'schedule': await loadScheduleGrid(); break;
+                case 'residents': await loadResidents(); break;
+                case 'swaps': await loadSwaps(); break;
+                case 'days-off': await loadDaysOff(); break;
+                case 'amion': await loadAmion(); break;
+                case 'settings': await loadSettings(); break;
+            }
+        }
+
+        // ===== Dashboard =====
+        async function loadDashboard() {
+            try {
+                const [residents, rotations, swaps, admins, audit] = await Promise.all([
+                    api('/api/admin/residents').catch(() => []),
+                    api('/api/admin/rotations').catch(() => []),
+                    api('/api/admin/swaps?status=peer_confirmed').catch(() => []),
+                    api('/api/admin/admins').catch(() => []),
+                    api('/api/admin/audit-log?limit=20').catch(() => []),
+                ]);
+
+                $('#statResidents').textContent = residents.length;
+                $('#statRotations').textContent = rotations.length;
+                $('#statSwaps').textContent = swaps.length;
+                $('#statAdmins').textContent = admins.length;
+
+                const tbody = $('#auditTable');
+                if (audit.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No recent activity</td></tr>';
+                } else {
+                    tbody.innerHTML = audit.map(log => `
+                        <tr>
+                            <td><span class="badge badge-success">${log.action}</span></td>
+                            <td>${log.entity_type || '-'}</td>
+                            <td>${log.entity_id || '-'}</td>
+                            <td>${formatDateTime(log.created_at)}</td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) {
+                showToast('Failed to load dashboard', 'error');
+            }
+        }
+
+        // ===== Schedule Grid =====
+        async function loadScheduleGrid() {
+            const container = $('#scheduleGrid');
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading schedule...</div>';
+
+            try {
+                const pgyFilter = $('#filterPGY').value;
+                const weeksFilter = $('#filterWeeks').value;
+
+                let url = '/api/admin/schedule/grid';
+                if (pgyFilter) url += `?pgy_levels=${pgyFilter}`;
+
+                gridData = await api(url);
+
+                if (!gridData.residents.length) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📅</div>
+                            <p>No schedule data found.</p>
+                            <p style="margin-top: 0.5rem;">Upload an Excel file to get started.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                renderScheduleGrid(container, gridData, parseInt(weeksFilter));
+            } catch (e) {
+                container.innerHTML = `<div class="empty-state">Failed to load schedule: ${e.message}</div>`;
+            }
+        }
+
+        function renderScheduleGrid(container, data, maxWeeks) {
+            const weeks = data.weeks.slice(0, maxWeeks);
+            const numCols = weeks.length + 1; // +1 for name column
+
+            let html = `<div class="schedule-grid" style="grid-template-columns: 180px repeat(${weeks.length}, minmax(85px, 1fr));">`;
+
+            // Header row
+            html += '<div class="grid-header-row">';
+            html += '<div class="grid-cell grid-header grid-resident-name">Resident</div>';
+            weeks.forEach(week => {
+                html += `<div class="grid-cell grid-header grid-header-week">${week.label}</div>`;
+            });
+            html += '</div>';
+
+            // Group by PGY level
+            let currentPGY = null;
+            data.residents.forEach(resident => {
+                if (resident.pgy_level !== currentPGY) {
+                    currentPGY = resident.pgy_level;
+                    html += `<div class="grid-pgy-header">${currentPGY}</div>`;
+                }
+
+                html += '<div class="grid-row">';
+                html += `<div class="grid-cell grid-resident-name">${resident.name}</div>`;
+
+                weeks.forEach(week => {
+                    const key = `${resident.id}:${week.start}`;
+                    const assignment = data.assignments[key];
+
+                    html += `<div class="grid-cell grid-assignment"
+                                  data-resident="${resident.id}"
+                                  data-week="${week.start}"
+                                  data-rotation="${assignment?.rotation_id || ''}">`;
+
+                    if (assignment) {
+                        const color = assignment.rotation_color || '#6B7280';
+                        html += `<span class="rotation-badge" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${assignment.rotation_name}</span>`;
+                    }
+
+                    html += '</div>';
+                });
+
+                html += '</div>';
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+
+            // Add click handlers to cells
+            container.querySelectorAll('.grid-assignment').forEach(cell => {
+                cell.addEventListener('click', (e) => openCellEditor(e, cell));
+            });
+        }
+
+        function openCellEditor(event, cell) {
+            const editor = $('#cellEditor');
+            const rect = cell.getBoundingClientRect();
+
+            // Position editor below the cell
+            editor.style.position = 'fixed';
+            editor.style.left = `${rect.left}px`;
+            editor.style.top = `${rect.bottom + 4}px`;
+
+            // Store reference to editing cell
+            editingCell = cell;
+
+            // Populate rotation options
+            const itemsContainer = $('#cellEditorItems');
+            const currentRotationId = cell.dataset.rotation;
+
+            let html = '';
+            gridData.rotations.forEach(rot => {
+                const selected = rot.id == currentRotationId ? 'style="background: var(--bg-hover);"' : '';
+                html += `
+                    <div class="cell-editor-item" data-rotation-id="${rot.id}" ${selected}>
+                        <div class="cell-editor-color" style="background: ${rot.color || '#6B7280'}"></div>
+                        <span>${rot.name}</span>
+                    </div>
+                `;
+            });
+            html += `<div class="cell-editor-item cell-editor-clear" data-rotation-id="">Clear</div>`;
+
+            itemsContainer.innerHTML = html;
+
+            // Add click handlers
+            itemsContainer.querySelectorAll('.cell-editor-item').forEach(item => {
+                item.addEventListener('click', () => selectRotation(item.dataset.rotationId));
+            });
+
+            editor.classList.add('active');
+            $('#cellEditorSearch').value = '';
+            $('#cellEditorSearch').focus();
+        }
+
+        async function selectRotation(rotationId) {
+            const editor = $('#cellEditor');
+            editor.classList.remove('active');
+
+            if (!editingCell) return;
+
+            const residentId = editingCell.dataset.resident;
+            const weekStart = editingCell.dataset.week;
+
+            try {
+                const result = await api(`/api/admin/schedule/cell?resident_id=${residentId}&week_start=${weekStart}&rotation_id=${rotationId || ''}`, {
+                    method: 'PUT'
+                });
+
+                // Update cell display
+                if (rotationId && result.assignment) {
+                    const color = result.assignment.rotation_color || '#6B7280';
+                    editingCell.innerHTML = `<span class="rotation-badge" style="background: ${color}20; color: ${color}; border: 1px solid ${color}40;">${result.assignment.rotation_name}</span>`;
+                    editingCell.dataset.rotation = rotationId;
+                } else {
+                    editingCell.innerHTML = '';
+                    editingCell.dataset.rotation = '';
+                }
+
+                showToast('Schedule updated');
+            } catch (e) {
+                showToast('Failed to update: ' + e.message, 'error');
+            }
+
+            editingCell = null;
+        }
+
+        // Close editor when clicking outside
+        document.addEventListener('click', (e) => {
+            const editor = $('#cellEditor');
+            if (!editor.contains(e.target) && !e.target.closest('.grid-assignment')) {
+                editor.classList.remove('active');
+                editingCell = null;
+            }
+        });
+
+        // Search filter in editor
+        $('#cellEditorSearch').addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            $$('#cellEditorItems .cell-editor-item').forEach(item => {
+                const name = item.textContent.toLowerCase();
+                item.style.display = name.includes(query) ? '' : 'none';
+            });
+        });
+
+        // Filter handlers
+        $('#filterPGY').addEventListener('change', loadScheduleGrid);
+        $('#filterWeeks').addEventListener('change', loadScheduleGrid);
+
+        // Upload/Export
+        $('#uploadBtn').addEventListener('click', () => $('#fileInput').click());
+
+        $('#fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const result = await fetch('/api/admin/schedule/upload', {
+                    method: 'POST',
+                    body: formData
+                }).then(r => r.json());
+
+                showToast(`Imported ${result.residents_processed} residents, ${result.assignments_created} assignments`);
+                loadScheduleGrid();
+            } catch (e) {
+                showToast('Failed to upload: ' + e.message, 'error');
+            }
+
+            e.target.value = '';
+        });
+
+        $('#exportBtn').addEventListener('click', () => {
+            window.location.href = '/api/admin/schedule/export';
+        });
+
+        // ===== Residents =====
+        async function loadResidents() {
+            try {
+                const residents = await api('/api/admin/residents?active_only=false');
+                const tbody = $('#residentsTable');
+
+                if (residents.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No residents found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = residents.map(r => `
+                    <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td><span class="badge badge-success">${r.pgy_level}</span></td>
+                        <td>${r.email || '-'}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="copyCalendarLink('${r.calendar_token}')">
+                                Copy Link
+                            </button>
+                        </td>
+                        <td><span class="badge ${r.is_active ? 'badge-success' : 'badge-error'}">${r.is_active ? 'Active' : 'Inactive'}</span></td>
+                        <td>
+                            <button class="btn btn-secondary btn-sm" onclick="editResident(${r.id})">Edit</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                showToast('Failed to load residents', 'error');
+            }
+        }
+
+        function copyCalendarLink(token) {
+            const url = `${window.location.origin}/api/calendar/${token}.ics`;
+            navigator.clipboard.writeText(url);
+            showToast('Calendar link copied!');
+        }
+
+        $('#addResidentBtn').addEventListener('click', () => {
+            showModal('Add Resident', `
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="residentName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">PGY Level</label>
+                    <select class="form-select" id="residentPGY">
+                        <option value="TY">TY</option>
+                        <option value="PGY1">PGY1</option>
+                        <option value="PGY2">PGY2</option>
+                        <option value="PGY3">PGY3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Email (optional)</label>
+                    <input type="email" class="form-input" id="residentEmail">
+                </div>
+            `, async () => {
+                try {
+                    await api('/api/admin/residents', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: $('#residentName').value,
+                            pgy_level: $('#residentPGY').value,
+                            email: $('#residentEmail').value || null,
+                        })
+                    });
+                    closeModal();
+                    showToast('Resident added');
+                    loadResidents();
+                } catch (e) {
+                    showToast('Failed to add resident: ' + e.message, 'error');
+                }
+            });
+        });
+
+        // ===== Swaps =====
+        async function loadSwaps() {
+            try {
+                // Load stats
+                await loadSwapStats();
+
+                const status = $('#filterSwapStatus').value;
+                const swaps = await api(`/api/admin/swaps${status ? `?status=${status}` : ''}`);
+                const tbody = $('#swapsTable');
+
+                if (swaps.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No swap requests</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = swaps.map(s => {
+                    const statusClass = s.status === 'approved' ? 'badge-success' :
+                                       s.status === 'rejected' ? 'badge-error' :
+                                       s.status === 'peer_confirmed' ? 'badge-warning' :
+                                       s.status === 'cancelled' ? 'badge-secondary' : 'badge-secondary';
+
+                    const statusLabel = s.status === 'peer_confirmed' ? 'Pending Approval' :
+                                       s.status === 'pending' ? 'Awaiting Peer' :
+                                       s.status.charAt(0).toUpperCase() + s.status.slice(1);
+
+                    return `
+                        <tr>
+                            <td>
+                                <strong>${s.requester_name || 'Unknown'}</strong>
+                                <br><small class="text-muted">${s.requester_pgy || ''}</small>
+                            </td>
+                            <td>
+                                <span class="badge badge-secondary">${s.requester_rotation || 'N/A'}</span>
+                                <br><small class="text-muted">${s.requester_week ? formatDate(s.requester_week) : ''}</small>
+                            </td>
+                            <td>
+                                <strong>${s.target_name || 'Unknown'}</strong>
+                                <br><small class="text-muted">${s.target_pgy || ''}</small>
+                            </td>
+                            <td>
+                                <span class="badge badge-secondary">${s.target_rotation || 'N/A'}</span>
+                                <br><small class="text-muted">${s.target_week ? formatDate(s.target_week) : ''}</small>
+                            </td>
+                            <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+                            <td>${formatDateTime(s.created_at)}</td>
+                            <td>
+                                ${s.status === 'peer_confirmed' ? `
+                                    <button class="btn btn-primary btn-sm" onclick="approveSwap(${s.id})">Approve</button>
+                                    <button class="btn btn-secondary btn-sm" onclick="rejectSwap(${s.id})">Reject</button>
+                                ` : s.status === 'pending' ? `
+                                    <button class="btn btn-secondary btn-sm" onclick="rejectSwap(${s.id})">Cancel</button>
+                                ` : `
+                                    <button class="btn btn-secondary btn-sm" onclick="viewSwapDetails(${s.id})">View</button>
+                                `}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                showToast('Failed to load swaps', 'error');
+            }
+        }
+
+        async function loadSwapStats() {
+            try {
+                const [pending, peerConfirmed, approved, rejected] = await Promise.all([
+                    api('/api/admin/swaps?status=pending').catch(() => []),
+                    api('/api/admin/swaps?status=peer_confirmed').catch(() => []),
+                    api('/api/admin/swaps?status=approved').catch(() => []),
+                    api('/api/admin/swaps?status=rejected').catch(() => []),
+                ]);
+
+                $('#swapsAwaitingPeer').textContent = pending.length;
+                $('#swapsPendingApproval').textContent = peerConfirmed.length;
+                $('#swapsApproved').textContent = approved.length;
+                $('#swapsRejected').textContent = rejected.length;
+            } catch (e) {
+                console.error('Failed to load swap stats', e);
+            }
+        }
+
+        async function approveSwap(id) {
+            showModal('Approve Swap', `
+                <p>Are you sure you want to approve this swap?</p>
+                <p>This will update both residents' schedules.</p>
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Admin Note (optional)</label>
+                    <textarea class="form-input" id="swapApproveNote" rows="2" placeholder="Add a note..."></textarea>
+                </div>
+            `, async () => {
+                try {
+                    const note = $('#swapApproveNote').value || null;
+                    await api(`/api/admin/swaps/${id}/approve${note ? `?note=${encodeURIComponent(note)}` : ''}`, {
+                        method: 'POST',
+                        body: '{}'
+                    });
+                    closeModal();
+                    showToast('Swap approved - schedules updated');
+                    loadSwaps();
+                } catch (e) {
+                    showToast('Failed: ' + e.message, 'error');
+                }
+            });
+        }
+
+        async function rejectSwap(id) {
+            showModal('Reject Swap', `
+                <p>Are you sure you want to reject this swap request?</p>
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label class="form-label">Reason (optional)</label>
+                    <textarea class="form-input" id="swapRejectNote" rows="2" placeholder="Provide a reason..."></textarea>
+                </div>
+            `, async () => {
+                try {
+                    const note = $('#swapRejectNote').value || null;
+                    await api(`/api/admin/swaps/${id}/reject${note ? `?note=${encodeURIComponent(note)}` : ''}`, {
+                        method: 'POST',
+                        body: '{}'
+                    });
+                    closeModal();
+                    showToast('Swap rejected');
+                    loadSwaps();
+                } catch (e) {
+                    showToast('Failed: ' + e.message, 'error');
+                }
+            });
+        }
+
+        async function viewSwapDetails(id) {
+            try {
+                const swap = await api(`/api/admin/swaps/${id}`);
+
+                showModal('Swap Details', `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="card" style="padding: 1rem;">
+                            <h4 style="margin-bottom: 0.5rem;">Requester</h4>
+                            <p><strong>${swap.requester?.name || 'Unknown'}</strong></p>
+                            <p class="text-muted">${swap.requester?.pgy_level || ''}</p>
+                            <div style="margin-top: 0.5rem;">
+                                <span class="badge badge-secondary">${swap.requester_assignment?.rotation || 'N/A'}</span>
+                                <br><small>${swap.requester_assignment?.week_start || ''}</small>
+                            </div>
+                        </div>
+                        <div class="card" style="padding: 1rem;">
+                            <h4 style="margin-bottom: 0.5rem;">Target</h4>
+                            <p><strong>${swap.target?.name || 'Unknown'}</strong></p>
+                            <p class="text-muted">${swap.target?.pgy_level || ''}</p>
+                            <div style="margin-top: 0.5rem;">
+                                <span class="badge badge-secondary">${swap.target_assignment?.rotation || 'N/A'}</span>
+                                <br><small>${swap.target_assignment?.week_start || ''}</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <p><strong>Status:</strong> ${swap.status}</p>
+                        ${swap.requester_note ? `<p><strong>Requester Note:</strong> ${swap.requester_note}</p>` : ''}
+                        ${swap.admin_note ? `<p><strong>Admin Note:</strong> ${swap.admin_note}</p>` : ''}
+                        <p><strong>Created:</strong> ${swap.created_at ? new Date(swap.created_at).toLocaleString() : 'N/A'}</p>
+                        ${swap.peer_confirmed_at ? `<p><strong>Peer Confirmed:</strong> ${new Date(swap.peer_confirmed_at).toLocaleString()}</p>` : ''}
+                        ${swap.admin_reviewed_at ? `<p><strong>Admin Reviewed:</strong> ${new Date(swap.admin_reviewed_at).toLocaleString()}</p>` : ''}
+                    </div>
+                `, () => closeModal());
+
+                // Change the save button to just "Close"
+                $('#modalSaveBtn').textContent = 'Close';
+            } catch (e) {
+                showToast('Failed to load swap details', 'error');
+            }
+        }
+
+        $('#filterSwapStatus').addEventListener('change', loadSwaps);
+
+        // ===== Days Off =====
+        let daysOffTypes = [];
+        let daysOffResidents = [];
+
+        async function loadDaysOff() {
+            try {
+                // Load filter options first
+                await loadDaysOffFilterOptions();
+
+                // Build query params from filters
+                const params = new URLSearchParams();
+                const residentFilter = $('#filterDaysOffResident').value;
+                const typeFilter = $('#filterDaysOffType').value;
+                const startFilter = $('#filterDaysOffStart').value;
+                const endFilter = $('#filterDaysOffEnd').value;
+
+                if (residentFilter) params.set('resident_id', residentFilter);
+                if (typeFilter) params.set('type_id', typeFilter);
+                if (startFilter) params.set('start_date', startFilter);
+                if (endFilter) params.set('end_date', endFilter);
+
+                const url = '/api/admin/days-off' + (params.toString() ? '?' + params.toString() : '');
+                const daysOff = await api(url);
+                const tbody = $('#daysOffTable');
+
+                if (daysOff.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No days off recorded</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = daysOff.map(d => {
+                    const sourceClass = d.source === 'csv' ? 'badge-secondary' :
+                                       d.source === 'llm' ? 'badge-warning' : 'badge-success';
+                    return `
+                        <tr>
+                            <td>${d.resident_name || d.resident_id}</td>
+                            <td>
+                                <span class="badge" style="background: ${d.type_color || '#6B7280'}20; color: ${d.type_color || '#6B7280'}">
+                                    ${d.type_name || d.type_id}
+                                </span>
+                            </td>
+                            <td>${formatDate(d.start_date)}</td>
+                            <td>${formatDate(d.end_date)}</td>
+                            <td>${d.notes || '-'}</td>
+                            <td><span class="badge ${sourceClass}">${d.source || 'manual'}</span></td>
+                            <td>
+                                <button class="btn btn-secondary btn-sm" onclick="editDayOff(${d.id})">Edit</button>
+                                <button class="btn btn-secondary btn-sm" onclick="deleteDayOff(${d.id})">Delete</button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                showToast('Failed to load days off', 'error');
+            }
+        }
+
+        async function loadDaysOffFilterOptions() {
+            if (daysOffTypes.length === 0) {
+                try {
+                    daysOffTypes = await api('/api/admin/days-off/types');
+                    const typeSelect = $('#filterDaysOffType');
+                    typeSelect.innerHTML = '<option value="">All Types</option>' +
+                        daysOffTypes.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+                } catch (e) {}
+            }
+
+            if (daysOffResidents.length === 0) {
+                try {
+                    daysOffResidents = await api('/api/admin/residents');
+                    const residentSelect = $('#filterDaysOffResident');
+                    residentSelect.innerHTML = '<option value="">All Residents</option>' +
+                        daysOffResidents.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+                } catch (e) {}
+            }
+        }
+
+        async function deleteDayOff(id) {
+            if (!confirm('Delete this day off?')) return;
+            try {
+                await api(`/api/admin/days-off/${id}`, { method: 'DELETE' });
+                showToast('Day off deleted');
+                loadDaysOff();
+            } catch (e) {
+                showToast('Failed: ' + e.message, 'error');
+            }
+        }
+
+        async function editDayOff(id) {
+            // TODO: Implement edit modal
+            showToast('Edit functionality coming soon');
+        }
+
+        // Days Off Filter Events
+        $('#applyDaysOffFilter').addEventListener('click', loadDaysOff);
+        $('#clearDaysOffFilter').addEventListener('click', () => {
+            $('#filterDaysOffResident').value = '';
+            $('#filterDaysOffType').value = '';
+            $('#filterDaysOffStart').value = '';
+            $('#filterDaysOffEnd').value = '';
+            loadDaysOff();
+        });
+
+        // Add Day Off Button
+        $('#addDayOffBtn').addEventListener('click', async () => {
+            await loadDaysOffFilterOptions();
+
+            const residentOptions = daysOffResidents.map(r =>
+                `<option value="${r.id}">${r.name} (${r.pgy_level})</option>`
+            ).join('');
+
+            const typeOptions = daysOffTypes.map(t =>
+                `<option value="${t.id}">${t.name}</option>`
+            ).join('');
+
+            showModal('Add Day Off', `
+                <div class="form-group">
+                    <label class="form-label">Resident</label>
+                    <select class="form-input" id="dayOffResident" required>
+                        <option value="">Select Resident</option>
+                        ${residentOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Type</label>
+                    <select class="form-input" id="dayOffType" required>
+                        ${typeOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start Date</label>
+                    <input type="date" class="form-input" id="dayOffStart" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Date</label>
+                    <input type="date" class="form-input" id="dayOffEnd" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes (optional)</label>
+                    <textarea class="form-input" id="dayOffNotes" rows="2"></textarea>
+                </div>
+            `, async () => {
+                try {
+                    await api('/api/admin/days-off', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            resident_id: parseInt($('#dayOffResident').value),
+                            type_id: parseInt($('#dayOffType').value),
+                            start_date: $('#dayOffStart').value,
+                            end_date: $('#dayOffEnd').value,
+                            notes: $('#dayOffNotes').value || null,
+                        })
+                    });
+                    closeModal();
+                    showToast('Day off added');
+                    loadDaysOff();
+                } catch (e) {
+                    showToast('Failed: ' + e.message, 'error');
+                }
+            });
+        });
+
+        // CSV Upload Section
+        $('#uploadCsvBtn').addEventListener('click', () => {
+            $('#csvUploadSection').style.display = 'block';
+            $('#llmParseSection').style.display = 'none';
+        });
+
+        $('#closeCsvSection').addEventListener('click', () => {
+            $('#csvUploadSection').style.display = 'none';
+        });
+
+        $('#downloadCsvTemplate').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const response = await fetch('/api/admin/days-off/template', {
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` }
+                });
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'days_off_template.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+            } catch (e) {
+                showToast('Failed to download template', 'error');
+            }
+        });
+
+        $('#previewCsvBtn').addEventListener('click', async () => {
+            const content = $('#csvContent').value.trim();
+            if (!content) {
+                showToast('Please enter CSV content', 'error');
+                return;
+            }
+
+            try {
+                const result = await api('/api/admin/days-off/preview-csv', {
+                    method: 'POST',
+                    body: JSON.stringify({ content })
+                });
+
+                const resultsDiv = $('#csvPreviewResults');
+                const validCount = result.entries.filter(e => e.valid).length;
+
+                resultsDiv.innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Preview Results:</strong> ${validCount} of ${result.total_rows} rows valid
+                    </div>
+                    ${result.errors.length > 0 ? `
+                        <div style="color: var(--error); margin-bottom: 1rem;">
+                            <strong>Errors:</strong>
+                            <ul style="margin: 0.5rem 0 0 1rem;">
+                                ${result.errors.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Resident</th>
+                                    <th>Type</th>
+                                    <th>Dates</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${result.entries.map(e => `
+                                    <tr style="${e.valid ? '' : 'opacity: 0.5'}">
+                                        <td>${e.valid ? '<span class="badge badge-success">Valid</span>' : '<span class="badge badge-error">Error</span>'}</td>
+                                        <td>${e.resident_name}</td>
+                                        <td>${e.type}</td>
+                                        <td>${e.start_date} to ${e.end_date}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                $('#importCsvBtn').disabled = validCount === 0;
+            } catch (e) {
+                showToast('Preview failed: ' + e.message, 'error');
+            }
+        });
+
+        $('#importCsvBtn').addEventListener('click', async () => {
+            const content = $('#csvContent').value.trim();
+            if (!content) return;
+
+            try {
+                const result = await api('/api/admin/days-off/upload-csv', {
+                    method: 'POST',
+                    body: JSON.stringify({ content })
+                });
+
+                showToast(`Imported ${result.created} days off (${result.skipped} skipped)`);
+                $('#csvUploadSection').style.display = 'none';
+                $('#csvContent').value = '';
+                $('#csvPreviewResults').innerHTML = '';
+                $('#importCsvBtn').disabled = true;
+                loadDaysOff();
+            } catch (e) {
+                showToast('Import failed: ' + e.message, 'error');
+            }
+        });
+
+        // LLM Parse Section
+        $('#llmParseBtn').addEventListener('click', () => {
+            $('#llmParseSection').style.display = 'block';
+            $('#csvUploadSection').style.display = 'none';
+        });
+
+        $('#closeLlmSection').addEventListener('click', () => {
+            $('#llmParseSection').style.display = 'none';
+        });
+
+        $('#parseLlmBtn').addEventListener('click', async () => {
+            const text = $('#llmTextInput').value.trim();
+            if (!text) {
+                showToast('Please enter text to parse', 'error');
+                return;
+            }
+
+            const btn = $('#parseLlmBtn');
+            btn.disabled = true;
+            btn.textContent = 'Parsing...';
+
+            try {
+                const result = await api('/api/admin/days-off/parse-text?preview_only=true', {
+                    method: 'POST',
+                    body: JSON.stringify({ text })
+                });
+
+                const resultsDiv = $('#llmParseResults');
+                const validCount = result.entries.filter(e => e.valid).length;
+
+                resultsDiv.innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Parsed Results:</strong> ${validCount} of ${result.total_parsed} entries valid
+                    </div>
+                    ${result.warnings.length > 0 ? `
+                        <div style="color: var(--warning); margin-bottom: 1rem;">
+                            <strong>Warnings:</strong>
+                            <ul style="margin: 0.5rem 0 0 1rem;">
+                                ${result.warnings.map(w => `<li>${w}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    ${result.errors.length > 0 ? `
+                        <div style="color: var(--error); margin-bottom: 1rem;">
+                            <strong>Errors:</strong>
+                            <ul style="margin: 0.5rem 0 0 1rem;">
+                                ${result.errors.map(e => `<li>${e}</li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                    <div class="table-container" style="max-height: 200px; overflow-y: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Status</th>
+                                    <th>Resident</th>
+                                    <th>Type</th>
+                                    <th>Dates</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${result.entries.map(e => `
+                                    <tr style="${e.valid ? '' : 'opacity: 0.5'}">
+                                        <td>${e.valid ? '<span class="badge badge-success">Valid</span>' : '<span class="badge badge-error">Error</span>'}</td>
+                                        <td>${e.resident_name}</td>
+                                        <td>${e.type}</td>
+                                        <td>${e.start_date} to ${e.end_date}</td>
+                                        <td>${e.notes || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+
+                $('#importLlmBtn').disabled = validCount === 0;
+            } catch (e) {
+                showToast('Parse failed: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Parse Text';
+            }
+        });
+
+        $('#importLlmBtn').addEventListener('click', async () => {
+            const text = $('#llmTextInput').value.trim();
+            if (!text) return;
+
+            try {
+                const result = await api('/api/admin/days-off/parse-text?preview_only=false', {
+                    method: 'POST',
+                    body: JSON.stringify({ text })
+                });
+
+                showToast(`Imported ${result.created} days off (${result.skipped} skipped)`);
+                $('#llmParseSection').style.display = 'none';
+                $('#llmTextInput').value = '';
+                $('#llmParseResults').innerHTML = '';
+                $('#importLlmBtn').disabled = true;
+                loadDaysOff();
+            } catch (e) {
+                showToast('Import failed: ' + e.message, 'error');
+            }
+        });
+
+        // ===== Settings =====
+        async function loadSettings() {
+            await Promise.all([loadAdmins(), loadRotations(), loadDayOffTypes()]);
+        }
+
+        async function loadAdmins() {
+            try {
+                const admins = await api('/api/admin/admins');
+                $('#adminsTable').innerHTML = admins.map(a => `
+                    <tr>
+                        <td>${a.email}</td>
+                        <td>${a.name || '-'}</td>
+                        <td>${a.last_login ? formatDateTime(a.last_login) : 'Never'}</td>
+                        <td><span class="badge ${a.is_active ? 'badge-success' : 'badge-error'}">${a.is_active ? 'Active' : 'Inactive'}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function loadRotations() {
+            try {
+                const rotations = await api('/api/admin/rotations');
+                $('#rotationsTable').innerHTML = rotations.map(r => `
+                    <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td><div class="color-swatch" style="background: ${r.color || '#6B7280'}"></div></td>
+                        <td>${r.start_time || '-'}</td>
+                        <td>${r.end_time || '-'}</td>
+                        <td>${r.is_overnight ? 'Yes' : 'No'}</td>
+                        <td>${r.weekdays_only ? 'Yes' : 'No'}</td>
+                        <td><button class="btn btn-secondary btn-sm" onclick="editRotation(${r.id})">Edit</button></td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function loadDayOffTypes() {
+            try {
+                const types = await api('/api/admin/day-off-types');
+                $('#dayOffTypesTable').innerHTML = types.map(t => `
+                    <tr>
+                        <td>${t.name}</td>
+                        <td><div class="color-swatch" style="background: ${t.color || '#6B7280'}"></div></td>
+                        <td>${t.is_system ? 'Yes' : 'No'}</td>
+                    </tr>
+                `).join('');
+            } catch (e) {}
+        }
+
+        $('#inviteAdminBtn').addEventListener('click', () => {
+            showModal('Invite Admin', `
+                <div class="form-group">
+                    <label class="form-label">Email</label>
+                    <input type="email" class="form-input" id="adminEmail" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Name (optional)</label>
+                    <input type="text" class="form-input" id="adminName">
+                </div>
+            `, async () => {
+                try {
+                    await api('/api/admin/admins/invite', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            email: $('#adminEmail').value,
+                            name: $('#adminName').value || null,
+                        })
+                    });
+                    closeModal();
+                    showToast('Admin invited');
+                    loadAdmins();
+                } catch (e) {
+                    showToast('Failed: ' + e.message, 'error');
+                }
+            });
+        });
+
+        $('#addRotationBtn').addEventListener('click', () => {
+            showModal('Add Rotation', `
+                <div class="form-group">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="rotationName" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Color</label>
+                    <input type="color" id="rotationColor" value="#06b6d4" style="width: 60px; height: 40px; border: none; cursor: pointer;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Start Time</label>
+                    <input type="time" class="form-input" id="rotationStart" value="06:00">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">End Time</label>
+                    <input type="time" class="form-input" id="rotationEnd" value="18:00">
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="rotationOvernight"> Overnight shift</label>
+                </div>
+                <div class="form-group">
+                    <label><input type="checkbox" id="rotationWeekdays"> Weekdays only</label>
+                </div>
+            `, async () => {
+                try {
+                    await api('/api/admin/rotations', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: $('#rotationName').value,
+                            color: $('#rotationColor').value,
+                            start_time: $('#rotationStart').value + ':00',
+                            end_time: $('#rotationEnd').value + ':00',
+                            is_overnight: $('#rotationOvernight').checked,
+                            weekdays_only: $('#rotationWeekdays').checked,
+                        })
+                    });
+                    closeModal();
+                    showToast('Rotation added');
+                    loadRotations();
+                } catch (e) {
+                    showToast('Failed: ' + e.message, 'error');
+                }
+            });
+        });
+
+        // ===== Amion Integration =====
+        async function loadAmion() {
+            await Promise.all([
+                loadAmionStatus(),
+                loadSyncHistory(),
+                loadUnmatchedNames(),
+                loadCallAssignments()
+            ]);
+        }
+
+        async function loadAmionStatus() {
+            try {
+                const status = await api('/api/admin/amion/status');
+
+                $('#amionStatus').textContent = status.configured ? 'Configured' : 'Not Configured';
+                $('#amionStatus').style.color = status.configured ? 'var(--success)' : 'var(--warning)';
+
+                if (status.last_sync) {
+                    const syncDate = new Date(status.last_sync.started_at);
+                    $('#amionLastSync').textContent = formatDateTime(status.last_sync.started_at);
+                    $('#amionLastSync').style.color = status.last_sync.status === 'completed' ? 'var(--success)' :
+                                                       status.last_sync.status === 'failed' ? 'var(--error)' : '';
+                } else {
+                    $('#amionLastSync').textContent = 'Never';
+                }
+
+                $('#amionCallCount').textContent = status.statistics?.total_call_assignments || 0;
+                $('#amionUnmatched').textContent = status.statistics?.unmatched_names || 0;
+                $('#amionUnmatched').style.color = (status.statistics?.unmatched_names || 0) > 0 ? 'var(--warning)' : '';
+
+                $('#amionUrl').value = status.amion_url || '';
+                $('#amionSyncHour').value = status.sync_hour || 3;
+            } catch (e) {
+                console.error('Failed to load Amion status:', e);
+            }
+        }
+
+        async function loadSyncHistory() {
+            try {
+                const history = await api('/api/admin/amion/sync-history?limit=10');
+                const tbody = $('#syncHistoryTable');
+
+                if (history.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No sync history</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = history.map(log => {
+                    const statusBadge = log.status === 'completed' ? 'badge-success' :
+                                       log.status === 'failed' ? 'badge-error' :
+                                       log.status === 'running' ? 'badge-warning' : 'badge-secondary';
+                    const errorCount = log.errors ? Object.keys(log.errors).length : 0;
+
+                    return `
+                        <tr>
+                            <td>${formatDateTime(log.started_at)}</td>
+                            <td><span class="badge ${statusBadge}">${log.status}</span></td>
+                            <td>${log.records_processed || 0}</td>
+                            <td>${errorCount > 0 ? `<span class="badge badge-warning">${errorCount}</span>` : '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load sync history:', e);
+            }
+        }
+
+        async function loadUnmatchedNames() {
+            try {
+                const data = await api('/api/admin/amion/unmatched-names');
+                const tbody = $('#unmatchedTable');
+
+                if (!data.unmatched_names || data.unmatched_names.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No unmatched names</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.unmatched_names.map(name => {
+                    const match = data.potential_matches?.[name];
+                    const confidenceClass = match?.confidence >= 0.8 ? 'badge-success' :
+                                           match?.confidence >= 0.5 ? 'badge-warning' : 'badge-error';
+
+                    // Build resident dropdown for manual matching
+                    const residentOptions = data.all_residents?.map(r =>
+                        `<option value="${r.id}" ${match?.resident_id === r.id ? 'selected' : ''}>${r.name} (${r.pgy_level})</option>`
+                    ).join('') || '';
+
+                    return `
+                        <tr>
+                            <td><strong>${name}</strong></td>
+                            <td>${match ? match.resident_name : '<span class="text-muted">No match found</span>'}</td>
+                            <td>${match ? `<span class="badge ${confidenceClass}">${(match.confidence * 100).toFixed(0)}%</span>` : '-'}</td>
+                            <td>
+                                <select class="form-input" style="max-width: 200px; font-size: 0.875rem;" data-amion-name="${name}">
+                                    <option value="">-- Select Resident --</option>
+                                    ${residentOptions}
+                                </select>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load unmatched names:', e);
+            }
+        }
+
+        async function loadCallAssignments() {
+            try {
+                const assignments = await api('/api/admin/amion/call-assignments?limit=20');
+                const tbody = $('#callAssignmentsTable');
+
+                if (assignments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No call assignments</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = assignments.map(a => {
+                    const callTypeBadge = a.call_type === 'on-call' ? 'badge-error' :
+                                         a.call_type === 'pre-call' ? 'badge-warning' :
+                                         a.call_type === 'post-call' ? 'badge-success' : 'badge-secondary';
+
+                    return `
+                        <tr>
+                            <td>${formatDate(a.date)}</td>
+                            <td>${a.resident_name || `ID: ${a.resident_id}`}</td>
+                            <td><span class="badge ${callTypeBadge}">${a.call_type}</span></td>
+                            <td>${a.service || '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (e) {
+                console.error('Failed to load call assignments:', e);
+            }
+        }
+
+        // Amion event listeners
+        $('#syncAmionBtn').addEventListener('click', async () => {
+            const btn = $('#syncAmionBtn');
+            const originalText = btn.textContent;
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Syncing...';
+
+                const result = await api('/api/admin/amion/sync', {
+                    method: 'POST',
+                    body: JSON.stringify({ months: 1 })
+                });
+
+                showToast(`Sync completed: ${result.results?.call_entries_processed || 0} call entries processed`);
+                await loadAmion();
+            } catch (e) {
+                showToast('Sync failed: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        $('#testScrapeBtn').addEventListener('click', async () => {
+            const btn = $('#testScrapeBtn');
+            const originalText = btn.textContent;
+
+            try {
+                btn.disabled = true;
+                btn.textContent = 'Testing...';
+
+                const result = await api('/api/admin/amion/test-scrape', { method: 'POST' });
+
+                if (result.status === 'success') {
+                    showModal('Test Scrape Results', `
+                        <div class="form-group">
+                            <label class="form-label">URL Tested</label>
+                            <input type="text" class="form-input" value="${result.url_tested}" readonly>
+                        </div>
+                        <div class="stats-grid" style="grid-template-columns: 1fr 1fr;">
+                            <div class="stat-card">
+                                <div class="stat-value">${result.call_entries_found}</div>
+                                <div class="stat-label">Call Entries</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value">${result.attending_entries_found}</div>
+                                <div class="stat-label">Attending Entries</div>
+                            </div>
+                        </div>
+                        ${result.sample_call_entries?.length > 0 ? `
+                            <div style="margin-top: 1rem;">
+                                <strong>Sample Call Entries:</strong>
+                                <ul style="margin-top: 0.5rem; font-size: 0.875rem;">
+                                    ${result.sample_call_entries.map(e =>
+                                        `<li>${e.resident_name} - ${e.date} - ${e.call_type}</li>`
+                                    ).join('')}
+                                </ul>
+                            </div>
+                        ` : ''}
+                    `, () => closeModal());
+                } else {
+                    showToast('Test failed: ' + result.error, 'error');
+                }
+            } catch (e) {
+                showToast('Test failed: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
+        });
+
+        $('#refreshUnmatchedBtn').addEventListener('click', async () => {
+            await loadUnmatchedNames();
+            showToast('Refreshed unmatched names');
+        });
+
+        // ===== Modal =====
+        function showModal(title, bodyHtml, onSave) {
+            $('#modalTitle').textContent = title;
+            $('#modalBody').innerHTML = bodyHtml;
+            $('#modalFooter').innerHTML = `
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button class="btn btn-primary" id="modalSaveBtn">Save</button>
+            `;
+            $('#modalSaveBtn').addEventListener('click', onSave);
+            $('#modalOverlay').classList.add('active');
+        }
+
+        function closeModal() {
+            $('#modalOverlay').classList.remove('active');
+        }
+
+        $('#modalClose').addEventListener('click', closeModal);
+        $('#modalOverlay').addEventListener('click', (e) => {
+            if (e.target === $('#modalOverlay')) closeModal();
+        });
+
+        // ===== Initialize =====
+        (async () => {
+            if (await checkAuth()) {
+                loadDashboard();
+            }
+        })();
+    </script>
+</body>
+</html>

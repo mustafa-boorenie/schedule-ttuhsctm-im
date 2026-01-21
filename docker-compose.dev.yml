@@ -1,0 +1,38 @@
+version: '3.8'
+
+# Development overrides - use with: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      # Mount source code for hot reloading
+      - ./app:/app/app
+      - ./static:/app/static
+    environment:
+      - DEBUG=true
+      - SECRET_KEY=dev-secret-key-not-for-production
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/rotation_calendar
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  db:
+    ports:
+      # Expose database port for local development tools
+      - "5432:5432"
+
+  # pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: rotation-calendar-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@example.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - rotation-network
