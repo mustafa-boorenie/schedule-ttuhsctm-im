@@ -25,6 +25,7 @@ from .middleware import (
 )
 from .models import Resident, Rotation, ScheduleAssignment, AcademicYear, Admin
 from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router
+from .routers.admin_auth import require_admin
 from .services.excel_import import ExcelImportService, seed_default_day_off_types
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
@@ -425,14 +426,14 @@ async def reload_schedule():
 @app.post("/api/admin/schedule/import")
 async def import_excel_schedule(
     file: UploadFile = File(...),
+    admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Import schedule from uploaded Excel file into the database.
 
-    This endpoint requires admin authentication (handled by middleware).
+    This endpoint requires admin authentication.
     """
-    # TODO: Add proper admin auth check
 
     # Save uploaded file temporarily
     import tempfile

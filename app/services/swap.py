@@ -296,6 +296,7 @@ class SwapService:
         if swap.status not in [SwapStatus.PENDING, SwapStatus.PEER_CONFIRMED]:
             raise ValueError(f"Cannot reject swap in {swap.status.value} status")
 
+        old_status = swap.status.value
         swap.status = SwapStatus.REJECTED
         swap.admin_reviewed_by = admin_id
         swap.admin_reviewed_at = datetime.utcnow()
@@ -307,7 +308,7 @@ class SwapService:
             action="swap_reject",
             entity_type="swap_request",
             entity_id=swap_id,
-            old_value={"status": swap.status.value},
+            old_value={"status": old_status},
             new_value={"status": "rejected", "admin_note": admin_note},
         )
         self.db.add(audit)

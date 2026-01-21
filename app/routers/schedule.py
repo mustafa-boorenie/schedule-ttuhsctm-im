@@ -97,8 +97,8 @@ async def get_schedule_grid(
             .options(selectinload(ScheduleAssignment.rotation))
             .where(
                 ScheduleAssignment.resident_id.in_(resident_ids),
-                ScheduleAssignment.week_start >= start_date,
-                ScheduleAssignment.week_end <= end_date
+                ScheduleAssignment.week_end >= start_date,
+                ScheduleAssignment.week_start <= end_date
             )
         )
         assignments_list = result.scalars().all()
