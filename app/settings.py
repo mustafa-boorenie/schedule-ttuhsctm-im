@@ -2,7 +2,7 @@
 Application settings and environment configuration.
 """
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
@@ -22,7 +22,16 @@ class Settings(BaseSettings):
     secret_key: str = Field(default="change-me-in-production-use-strong-secret")
 
     # CORS
-    cors_origins: List[str] = ["*"]
+    cors_origins: Union[List[str], str] = ["*"]
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, v):
+        if isinstance(v, str):
+            if v == "*":
+                return ["*"]
+            return [origin.strip() for origin in v.split(",")]
+        return v
 
     # Rate limiting
     rate_limit_per_minute: int = 60
@@ -103,6 +112,7 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 # Global settings instance
