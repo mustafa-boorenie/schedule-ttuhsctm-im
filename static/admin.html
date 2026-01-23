@@ -1111,6 +1111,7 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
         async function api(endpoint, options = {}) {
             const response = await fetch(endpoint, {
                 ...options,
+                credentials: 'include',
                 headers: {
                     'Content-Type': 'application/json',
                     ...options.headers,
@@ -1392,10 +1393,17 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
             formData.append('file', file);
 
             try {
-                const result = await fetch('/api/admin/schedule/upload', {
+                const response = await fetch('/api/admin/schedule/upload', {
                     method: 'POST',
-                    body: formData
-                }).then(r => r.json());
+                    body: formData,
+                    credentials: 'include'
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.detail || result.message || 'Upload failed');
+                }
 
                 showToast(`Imported ${result.residents_processed} residents, ${result.assignments_created} assignments`);
                 loadScheduleGrid();
