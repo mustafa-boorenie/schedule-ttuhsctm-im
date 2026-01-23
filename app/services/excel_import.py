@@ -137,6 +137,10 @@ class ExcelImportService:
                 if len(rotation_name) > 50:
                     continue
 
+                # Skip entries that look like date ranges (e.g., "June27-Jul 3")
+                if self._looks_like_date_range(rotation_name):
+                    continue
+
                 # Get or create rotation
                 rotation = await self._get_or_create_rotation(rotation_name)
 
@@ -295,7 +299,8 @@ class ExcelImportService:
                 if isinstance(value, str) and value.strip():
                     name = value.strip()
                     # Skip entries that are too long (likely notes/descriptions)
-                    if len(name) <= 50:
+                    # Skip entries that look like date ranges
+                    if len(name) <= 50 and not self._looks_like_date_range(name):
                         rotation_names.add(name)
 
         # Get existing rotations
@@ -399,6 +404,17 @@ class ExcelImportService:
             )
             self.db.add(assignment)
             return True
+
+    def _looks_like_date_range(self, text: str) -> bool:
+        """Check if text looks like a date range (e.g., 'June27-Jul 3', 'Jul 1-7')."""
+        import re
+        # Check for month names
+        month_pattern = r'(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)'
+        if re.search(month_pattern, text, re.IGNORECASE):
+            # Contains a month name and likely a number
+            if re.search(r'\d', text):
+                return True
+        return False
 
     def _guess_pgy_level(self, name: str, df: pd.DataFrame, current_idx: int) -> PGYLevel:
         """Guess PGY level based on position in spreadsheet."""
