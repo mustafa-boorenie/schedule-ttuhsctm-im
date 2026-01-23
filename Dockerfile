@@ -48,8 +48,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app/wheels /wheels
 RUN pip install --no-cache /wheels/*
 
-# Install Playwright browsers as root (before switching user)
-RUN playwright install chromium
+# Set Playwright browsers path to a shared location
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
+
+# Install Playwright browsers to shared location
+RUN mkdir -p /opt/playwright-browsers && \
+    playwright install chromium && \
+    chmod -R 755 /opt/playwright-browsers
 
 # Copy application code
 COPY --chown=appuser:appuser . .
