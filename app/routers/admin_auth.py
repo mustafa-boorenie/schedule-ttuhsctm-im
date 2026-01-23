@@ -55,41 +55,35 @@ async def setup_first_admin(
 
 
 @router.post("/login")
-async def request_magic_link(
+async def login_with_password(
     request: AdminLoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Request a magic link for admin login.
-
-    If the email is registered as an admin, a magic link will be sent.
-    For security, we always return success even if the email is not found.
+    Simple password-based admin login.
     """
-    from ..settings import settings
+    ADMIN_PASSWORD = "ttuhsc-im123!"
 
     auth_service = AuthService(db)
-    email_service = EmailService()
-
     admin = await auth_service.get_admin_by_email(request.email)
 
-    if admin:
-        magic_link = await auth_service.create_magic_link(admin)
-        magic_link_url = auth_service.get_magic_link_url(magic_link.token)
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        # If SMTP is not configured, return the magic link directly
-        if not settings.smtp_user or not settings.smtp_password:
-            return {
-                "message": "SMTP not configured. Use this link to login:",
-                "magic_link": magic_link_url,
-                "status": "ok"
-            }
+    if request.password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
 
-        await email_service.send_magic_link(admin.email, magic_link_url)
+    # Create session token
+    session = await auth_service.create_session(admin)
 
-    # Always return success to prevent email enumeration
     return {
-        "message": "If your email is registered, you will receive a login link shortly.",
-        "status": "ok"
+        "message": "Login successful",
+        "token": session.token,
+        "admin": {
+            "id": admin.id,
+            "email": admin.email,
+            "name": admin.name
+        }
     }
 
 

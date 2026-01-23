@@ -217,7 +217,7 @@
 
         <div class="card">
             <h1 class="card-title">Admin Login</h1>
-            <p class="card-subtitle">Enter your email to receive a secure login link</p>
+            <p class="card-subtitle">Enter your credentials to access the admin portal</p>
 
             <div id="message" class="message"></div>
 
@@ -234,8 +234,20 @@
                     >
                 </div>
 
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input
+                        type="password"
+                        id="password"
+                        class="form-input"
+                        placeholder="Enter password"
+                        required
+                        autocomplete="current-password"
+                    >
+                </div>
+
                 <button type="submit" class="btn" id="submitBtn">
-                    Send Login Link
+                    Sign In
                 </button>
             </form>
         </div>
@@ -248,6 +260,7 @@
     <script>
         const form = document.getElementById('loginForm');
         const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
         const submitBtn = document.getElementById('submitBtn');
         const messageEl = document.getElementById('message');
 
@@ -255,31 +268,43 @@
             e.preventDefault();
 
             const email = emailInput.value.trim();
-            if (!email) return;
+            const password = passwordInput.value;
+            if (!email || !password) return;
 
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="loading"></span>Sending...';
+            submitBtn.innerHTML = '<span class="loading"></span>Signing in...';
             messageEl.className = 'message';
 
             try {
                 const response = await fetch('/api/admin/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
+                    body: JSON.stringify({ email, password })
                 });
 
                 const data = await response.json();
 
-                messageEl.textContent = data.message || 'If your email is registered, you will receive a login link shortly.';
-                messageEl.className = 'message success';
-                emailInput.value = '';
+                if (response.ok) {
+                    // Store token and redirect
+                    localStorage.setItem('admin_token', data.token);
+                    document.cookie = `admin_token=${data.token}; path=/; max-age=${60*60*24*7}; SameSite=Lax`;
+                    messageEl.textContent = 'Login successful! Redirecting...';
+                    messageEl.className = 'message success';
+                    setTimeout(() => {
+                        window.location.href = '/admin';
+                    }, 500);
+                } else {
+                    messageEl.textContent = data.detail || 'Invalid email or password';
+                    messageEl.className = 'message error';
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign In';
+                }
 
             } catch (err) {
-                messageEl.textContent = 'Failed to send login link. Please try again.';
+                messageEl.textContent = 'Login failed. Please try again.';
                 messageEl.className = 'message error';
-            } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Send Login Link';
+                submitBtn.textContent = 'Sign In';
             }
         });
 

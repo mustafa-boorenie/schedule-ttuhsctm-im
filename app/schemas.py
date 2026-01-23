@@ -344,6 +344,7 @@ class AdminResponse(AdminBase):
 
 class AdminLoginRequest(BaseModel):
     email: EmailStr
+    password: str = ""
 
 
 class MagicLinkVerifyResponse(BaseModel):
