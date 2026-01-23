@@ -73,12 +73,12 @@ async def login_with_password(
     if request.password != ADMIN_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Create session token
-    session = await auth_service.create_session(admin)
+    # Create access token
+    token = auth_service.create_access_token(admin)
 
     return {
         "message": "Login successful",
-        "token": session.token,
+        "token": token,
         "admin": {
             "id": admin.id,
             "email": admin.email,
