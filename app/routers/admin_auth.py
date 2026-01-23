@@ -16,6 +16,44 @@ from ..models import Admin
 router = APIRouter(prefix="/api/admin", tags=["admin-auth"])
 
 
+@router.post("/setup")
+async def setup_first_admin(
+    request: AdminLoginRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create the first admin user. Only works if no admins exist.
+    This is a one-time setup endpoint for initial deployment.
+    """
+    from sqlalchemy import select, func
+
+    # Check if any admins exist
+    result = await db.execute(select(func.count(Admin.id)))
+    admin_count = result.scalar()
+
+    if admin_count > 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Setup already complete. Use /login to request a magic link."
+        )
+
+    # Create the first admin
+    admin = Admin(
+        email=request.email,
+        name=request.email.split("@")[0],
+        is_active=True,
+    )
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+
+    return {
+        "message": f"Admin user created for {request.email}. You can now use /login to request a magic link.",
+        "admin_id": admin.id,
+        "status": "ok"
+    }
+
+
 @router.post("/login")
 async def request_magic_link(
     request: AdminLoginRequest,
