@@ -65,6 +65,8 @@ async def request_magic_link(
     If the email is registered as an admin, a magic link will be sent.
     For security, we always return success even if the email is not found.
     """
+    from ..settings import settings
+
     auth_service = AuthService(db)
     email_service = EmailService()
 
@@ -73,6 +75,15 @@ async def request_magic_link(
     if admin:
         magic_link = await auth_service.create_magic_link(admin)
         magic_link_url = auth_service.get_magic_link_url(magic_link.token)
+
+        # If SMTP is not configured, return the magic link directly
+        if not settings.smtp_user or not settings.smtp_password:
+            return {
+                "message": "SMTP not configured. Use this link to login:",
+                "magic_link": magic_link_url,
+                "status": "ok"
+            }
+
         await email_service.send_magic_link(admin.email, magic_link_url)
 
     # Always return success to prevent email enumeration
