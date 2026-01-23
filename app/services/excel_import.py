@@ -133,6 +133,10 @@ class ExcelImportService:
 
                 rotation_name = str(rotation_name).strip()
 
+                # Skip entries that are too long (likely notes/descriptions, not rotation names)
+                if len(rotation_name) > 50:
+                    continue
+
                 # Get or create rotation
                 rotation = await self._get_or_create_rotation(rotation_name)
 
@@ -289,7 +293,10 @@ class ExcelImportService:
         for col in week_columns:
             for value in df[col].dropna():
                 if isinstance(value, str) and value.strip():
-                    rotation_names.add(value.strip())
+                    name = value.strip()
+                    # Skip entries that are too long (likely notes/descriptions)
+                    if len(name) <= 50:
+                        rotation_names.add(name)
 
         # Get existing rotations
         result = await self.db.execute(select(Rotation))
