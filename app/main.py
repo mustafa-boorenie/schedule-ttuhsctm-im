@@ -141,11 +141,16 @@ async def list_residents(db: AsyncSession = Depends(get_db)):
 
     # Fallback to legacy Excel parser
     try:
-        parser = get_parser(SCHEDULE_PATH)
-        resident_names = parser.get_residents()
-        return {"residents": sorted(resident_names)}
+        if SCHEDULE_PATH.exists():
+            parser = get_parser(SCHEDULE_PATH)
+            resident_names = parser.get_residents()
+            return {"residents": sorted(resident_names)}
+        else:
+            # No data available yet - return empty list
+            return {"residents": []}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading residents: {str(e)}")
+        logger.warning(f"Could not load residents: {e}")
+        return {"residents": []}
 
 
 @app.get("/api/residents/{resident_id}/schedule")
