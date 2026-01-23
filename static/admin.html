@@ -899,12 +899,12 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                 <div class="card-body">
                     <div class="form-group">
                         <label class="form-label">Amion URL</label>
-                        <input type="text" class="form-input" id="amionUrl" placeholder="https://www.amion.com/..." readonly>
-                        <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">Configure in .env file (AMION_BASE_URL)</small>
+                        <input type="text" class="form-input" id="amionUrl" placeholder="https://www.amion.com/cgi-bin/ocs?...">
+                        <small style="color: var(--text-muted); display: block; margin-top: 0.25rem;">Enter your Amion calendar URL to test scraping</small>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Daily Sync Hour (24h)</label>
-                        <input type="number" class="form-input" id="amionSyncHour" min="0" max="23" value="3" readonly style="max-width: 100px;">
+                        <input type="number" class="form-input" id="amionSyncHour" min="0" max="23" value="3" style="max-width: 100px;">
                     </div>
                 </div>
             </div>
@@ -2303,6 +2303,12 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
         $('#syncAmionBtn').addEventListener('click', async () => {
             const btn = $('#syncAmionBtn');
             const originalText = btn.textContent;
+            const amionUrl = $('#amionUrl').value.trim();
+
+            if (!amionUrl) {
+                showToast('Please enter an Amion URL first', 'error');
+                return;
+            }
 
             try {
                 btn.disabled = true;
@@ -2310,7 +2316,7 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
 
                 const result = await api('/api/admin/amion/sync', {
                     method: 'POST',
-                    body: JSON.stringify({ months: 1 })
+                    body: JSON.stringify({ months: 1, url_override: amionUrl })
                 });
 
                 showToast(`Sync completed: ${result.results?.call_entries_processed || 0} call entries processed`);
@@ -2326,12 +2332,18 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
         $('#testScrapeBtn').addEventListener('click', async () => {
             const btn = $('#testScrapeBtn');
             const originalText = btn.textContent;
+            const amionUrl = $('#amionUrl').value.trim();
+
+            if (!amionUrl) {
+                showToast('Please enter an Amion URL first', 'error');
+                return;
+            }
 
             try {
                 btn.disabled = true;
                 btn.textContent = 'Testing...';
 
-                const result = await api('/api/admin/amion/test-scrape', { method: 'POST' });
+                const result = await api(`/api/admin/amion/test-scrape?url=${encodeURIComponent(amionUrl)}`, { method: 'POST' });
 
                 if (result.status === 'success') {
                     showModal('Test Scrape Results', `
