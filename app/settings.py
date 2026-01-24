@@ -15,7 +15,7 @@ class Settings(BaseSettings):
 
     # Application
     app_name: str = "Residency Rotation Calendar"
-    app_version: str = "2.0.0"
+    app_version: str = "2.0.1"
     debug: bool = False
     testing: bool = False
     base_url: str = "http://localhost:8000"
