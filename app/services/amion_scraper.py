@@ -118,19 +118,32 @@ class AmionScraper:
             url = f"{base_url}?month={month_str}&assignment_kind=call&y_axis=names"
 
         # Try HTTP-based scraping first (faster, no browser needed)
+        http_error = None
         try:
-            return await self._scrape_with_http(url, year, month)
-        except Exception as http_error:
-            print(f"HTTP scraping failed: {http_error}, trying Playwright...")
+            result = await self._scrape_with_http(url, year, month)
+            # If we got results, return them
+            if result[0] or result[1]:  # call_entries or attending_entries
+                return result
+            # If no results, might need JavaScript - try Playwright
+            http_error = "No data found with HTTP scraping"
+        except Exception as e:
+            http_error = str(e)
+            print(f"HTTP scraping failed: {http_error}")
 
-            # Fall back to Playwright if available
-            if PLAYWRIGHT_AVAILABLE:
-                try:
-                    return await self._scrape_with_playwright(url, year, month)
-                except Exception as pw_error:
-                    raise RuntimeError(f"Both HTTP and Playwright scraping failed. HTTP: {http_error}, Playwright: {pw_error}")
-            else:
-                raise RuntimeError(f"HTTP scraping failed and Playwright not available: {http_error}")
+        # Fall back to Playwright if available and HTTP didn't work
+        if PLAYWRIGHT_AVAILABLE and http_error:
+            try:
+                return await self._scrape_with_playwright(url, year, month)
+            except Exception as pw_error:
+                # Don't expose the full Playwright error, just note it failed
+                if "Executable doesn't exist" in str(pw_error):
+                    raise RuntimeError(f"HTTP scraping: {http_error}. Playwright browsers not installed on server.")
+                raise RuntimeError(f"Scraping failed. HTTP: {http_error}, Playwright: {pw_error}")
+        elif http_error:
+            raise RuntimeError(f"HTTP scraping failed: {http_error}")
+
+        # Return empty if nothing found (shouldn't normally reach here)
+        return [], []
 
     async def _scrape_with_http(
         self,
