@@ -2,7 +2,7 @@
 Amion integration API routes.
 """
 from typing import List, Optional, Dict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy import select, func, desc
@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from ..database import get_db
 from ..models import (
     Admin, Resident, Attending, AttendingAssignment, CallAssignment,
-    AmionSyncLog, AcademicYear, SyncStatus
+    AmionSyncLog, AcademicYear, SyncStatus, DataSource, ScheduleAssignment, Rotation
 )
 from ..services.amion_scraper import AmionScraper, run_amion_sync
 from ..settings import settings
@@ -446,6 +446,220 @@ async def test_scrape(
         return {
             "status": "error",
             "url_tested": test_url,
+            "error": str(e),
+        }
+
+    finally:
+        await scraper.close()
+
+
+@router.post("/test-team-attending")
+async def test_team_attending_scrape(
+    all_rows_url: str,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Test scraping the team-attending assignments from Amion's all_rows view.
+
+    This shows which attending is covering which team on which dates.
+    """
+    scraper = AmionScraper(db)
+
+    try:
+        today = date.today()
+        team_attending = await scraper.scrape_team_attending_schedule(
+            all_rows_url, today.year, today.month
+        )
+
+        # Group by team for easier viewing
+        by_team = {}
+        for ta in team_attending:
+            if ta.team_name not in by_team:
+                by_team[ta.team_name] = []
+            by_team[ta.team_name].append({
+                "attending": ta.attending_name,
+                "start_date": ta.start_date.isoformat(),
+                "end_date": ta.end_date.isoformat(),
+            })
+
+        return {
+            "status": "success",
+            "url_tested": all_rows_url,
+            "total_assignments": len(team_attending),
+            "teams_found": list(by_team.keys()),
+            "by_team": by_team,
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "url_tested": all_rows_url,
+            "error": str(e),
+        }
+
+    finally:
+        await scraper.close()
+
+
+@router.post("/test-oncall")
+async def test_oncall_scrape(
+    oncall_url: str,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Test scraping the on-call schedule from Amion's filtered view.
+
+    This shows which attending is on-call on each date.
+    """
+    scraper = AmionScraper(db)
+
+    try:
+        today = date.today()
+        oncall_entries = await scraper.scrape_oncall_schedule(
+            oncall_url, today.year, today.month
+        )
+
+        return {
+            "status": "success",
+            "url_tested": oncall_url,
+            "oncall_entries_found": len(oncall_entries),
+            "sample_entries": [
+                {
+                    "attending": e.attending_name,
+                    "date": e.date.isoformat(),
+                    "service": e.service,
+                }
+                for e in oncall_entries[:20]
+            ],
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "url_tested": oncall_url,
+            "error": str(e),
+        }
+
+    finally:
+        await scraper.close()
+
+
+@router.post("/sync-call-schedule")
+async def sync_call_schedule(
+    all_rows_url: str,
+    oncall_url: str,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Full sync: Scrape Amion and generate call assignments for residents.
+
+    1. Scrapes all_rows view to get team → attending mapping
+    2. Scrapes on-call view to get which attending is on-call each day
+    3. Cross-references with residents assigned to each rotation
+    4. Creates pre-call, on-call, post-call assignments
+    """
+    scraper = AmionScraper(db)
+
+    try:
+        today = date.today()
+
+        # Step 1: Get team-attending assignments
+        team_attending = await scraper.scrape_team_attending_schedule(
+            all_rows_url, today.year, today.month
+        )
+
+        # Step 2: Get on-call schedule
+        oncall_entries = await scraper.scrape_oncall_schedule(
+            oncall_url, today.year, today.month
+        )
+
+        # Step 3: Get residents by rotation from database
+        from ..models import Resident, ScheduleAssignment, Rotation
+
+        # Get current academic year
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.is_current == True)
+        )
+        academic_year = result.scalar_one_or_none()
+
+        # Get all schedule assignments for this month
+        month_start = date(today.year, today.month, 1)
+        month_end = date(today.year, today.month + 1, 1) - timedelta(days=1) if today.month < 12 else date(today.year, 12, 31)
+
+        result = await db.execute(
+            select(ScheduleAssignment, Rotation, Resident)
+            .join(Rotation, ScheduleAssignment.rotation_id == Rotation.id)
+            .join(Resident, ScheduleAssignment.resident_id == Resident.id)
+            .where(ScheduleAssignment.week_start <= month_end)
+            .where(ScheduleAssignment.week_end >= month_start)
+        )
+        schedule_data = result.all()
+
+        # Build rotation -> residents mapping
+        residents_by_rotation = {}
+        for assignment, rotation, resident in schedule_data:
+            rotation_name = rotation.name
+            if rotation_name not in residents_by_rotation:
+                residents_by_rotation[rotation_name] = []
+            if resident.id not in residents_by_rotation[rotation_name]:
+                residents_by_rotation[rotation_name].append(resident.id)
+
+        # Step 4: Generate call assignments
+        call_assignments = scraper.generate_call_assignments_for_residents(
+            oncall_entries,
+            team_attending,
+            residents_by_rotation,
+        )
+
+        # Step 5: Save to database
+        created = 0
+        updated = 0
+        for ca in call_assignments:
+            # Check if exists
+            existing = await db.execute(
+                select(CallAssignment).where(
+                    CallAssignment.resident_id == ca['resident_id'],
+                    CallAssignment.date == ca['date'],
+                    CallAssignment.call_type == ca['call_type']
+                )
+            )
+            existing = existing.scalar_one_or_none()
+
+            if existing:
+                existing.service = ca.get('service')
+                existing.source = DataSource.AMION
+                updated += 1
+            else:
+                new_assignment = CallAssignment(
+                    resident_id=ca['resident_id'],
+                    date=ca['date'],
+                    call_type=ca['call_type'],
+                    service=ca.get('service'),
+                    academic_year_id=academic_year.id if academic_year else None,
+                    source=DataSource.AMION,
+                )
+                db.add(new_assignment)
+                created += 1
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "team_attending_found": len(team_attending),
+            "oncall_entries_found": len(oncall_entries),
+            "rotations_in_db": list(residents_by_rotation.keys()),
+            "call_assignments_generated": len(call_assignments),
+            "created": created,
+            "updated": updated,
+        }
+
+    except Exception as e:
+        await db.rollback()
+        return {
+            "status": "error",
             "error": str(e),
         }
 

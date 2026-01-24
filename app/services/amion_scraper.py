@@ -51,6 +51,25 @@ class ScrapedAttendingEntry:
 
 
 @dataclass
+class TeamAttendingAssignment:
+    """A team-to-attending assignment from Amion."""
+    team_name: str  # e.g., "Blue Team", "Red Team"
+    attending_name: str  # e.g., "ESPARZA"
+    start_date: date
+    end_date: date  # Usually a week
+    raw_text: Optional[str] = None
+
+
+@dataclass
+class OnCallEntry:
+    """An on-call entry showing which attending is on call."""
+    attending_name: str
+    date: date
+    service: str  # e.g., "Hospitalist On-Call"
+    raw_text: Optional[str] = None
+
+
+@dataclass
 class NameMatch:
     """Result of matching a scraped name to a database resident."""
     scraped_name: str
@@ -144,6 +163,294 @@ class AmionScraper:
 
         # Return empty if nothing found (shouldn't normally reach here)
         return [], []
+
+    async def scrape_team_attending_schedule(
+        self,
+        all_rows_url: str,
+        year: int,
+        month: int,
+    ) -> List[TeamAttendingAssignment]:
+        """
+        Scrape the all_rows view to get team → attending mappings.
+
+        Returns a list of TeamAttendingAssignment showing which attending
+        covers which team on which dates.
+        """
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(all_rows_url)
+            response.raise_for_status()
+            html = response.text
+
+        soup = BeautifulSoup(html, 'html.parser')
+        return self._extract_team_attending_from_soup(soup, year, month)
+
+    def _extract_team_attending_from_soup(
+        self,
+        soup: BeautifulSoup,
+        year: int,
+        month: int,
+    ) -> List[TeamAttendingAssignment]:
+        """Extract team-attending assignments from parsed HTML."""
+        entries = []
+
+        # Look for table-based schedules
+        tables = soup.find_all('table')
+
+        for table in tables:
+            rows = table.find_all('tr')
+
+            for row in rows:
+                cells = row.find_all(['th', 'td'])
+                if not cells:
+                    continue
+
+                # First cell is the team/service name
+                first_cell = cells[0].get_text(strip=True)
+
+                # Skip header/empty rows
+                if not first_cell or first_cell.lower() in ('name', 'service', 'date', '', 'schedule'):
+                    continue
+
+                # Check if this looks like a team name (contains "Team" or is a known service)
+                team_name = first_cell
+
+                # Track consecutive days with same attending for date range
+                current_attending = None
+                range_start = None
+
+                for idx, cell in enumerate(cells[1:], 1):
+                    cell_text = cell.get_text(strip=True)
+
+                    if not cell_text:
+                        # End of a range
+                        if current_attending and range_start:
+                            try:
+                                end_date = date(year, month, idx - 1)
+                                if end_date.month == month:
+                                    entries.append(TeamAttendingAssignment(
+                                        team_name=team_name,
+                                        attending_name=current_attending,
+                                        start_date=range_start,
+                                        end_date=end_date,
+                                        raw_text=current_attending,
+                                    ))
+                            except ValueError:
+                                pass
+                        current_attending = None
+                        range_start = None
+                        continue
+
+                    # Skip time entries like "8A-6P"
+                    if re.match(r'\d+[AP]-\d+[AP]', cell_text.upper()):
+                        continue
+
+                    # This should be an attending name
+                    attending_name = cell_text.upper()
+
+                    try:
+                        entry_date = date(year, month, idx)
+                        if entry_date.month != month:
+                            continue
+                    except ValueError:
+                        continue
+
+                    if attending_name != current_attending:
+                        # Save previous range if exists
+                        if current_attending and range_start:
+                            try:
+                                end_date = date(year, month, idx - 1)
+                                if end_date.month == month:
+                                    entries.append(TeamAttendingAssignment(
+                                        team_name=team_name,
+                                        attending_name=current_attending,
+                                        start_date=range_start,
+                                        end_date=end_date,
+                                        raw_text=current_attending,
+                                    ))
+                            except ValueError:
+                                pass
+
+                        # Start new range
+                        current_attending = attending_name
+                        range_start = entry_date
+
+                # Don't forget the last range
+                if current_attending and range_start:
+                    try:
+                        # End at last day of month or last column
+                        last_day = min(len(cells) - 1, 31)
+                        end_date = date(year, month, last_day)
+                        if end_date.month == month:
+                            entries.append(TeamAttendingAssignment(
+                                team_name=team_name,
+                                attending_name=current_attending,
+                                start_date=range_start,
+                                end_date=end_date,
+                                raw_text=current_attending,
+                            ))
+                    except ValueError:
+                        pass
+
+        return entries
+
+    async def scrape_oncall_schedule(
+        self,
+        oncall_url: str,
+        year: int,
+        month: int,
+    ) -> List[OnCallEntry]:
+        """
+        Scrape the on-call filtered view to get which attending is on call each day.
+
+        Returns a list of OnCallEntry showing which attending is on call on which dates.
+        """
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(oncall_url)
+            response.raise_for_status()
+            html = response.text
+
+        soup = BeautifulSoup(html, 'html.parser')
+        return self._extract_oncall_from_soup(soup, year, month)
+
+    def _extract_oncall_from_soup(
+        self,
+        soup: BeautifulSoup,
+        year: int,
+        month: int,
+    ) -> List[OnCallEntry]:
+        """Extract on-call entries from parsed HTML."""
+        entries = []
+
+        tables = soup.find_all('table')
+
+        for table in tables:
+            rows = table.find_all('tr')
+
+            for row in rows:
+                cells = row.find_all(['th', 'td'])
+                if not cells:
+                    continue
+
+                # First cell is the service name (e.g., "Hospitalist On-Call")
+                service_name = cells[0].get_text(strip=True)
+
+                if not service_name or service_name.lower() in ('name', 'service', 'date', ''):
+                    continue
+
+                for idx, cell in enumerate(cells[1:], 1):
+                    cell_text = cell.get_text(strip=True)
+
+                    if not cell_text:
+                        continue
+
+                    # Skip time entries
+                    if re.match(r'\d+[AP]-\d+[AP]', cell_text.upper()):
+                        continue
+
+                    try:
+                        entry_date = date(year, month, idx)
+                        if entry_date.month != month:
+                            continue
+                    except ValueError:
+                        continue
+
+                    entries.append(OnCallEntry(
+                        attending_name=cell_text.upper(),
+                        date=entry_date,
+                        service=service_name,
+                        raw_text=cell_text,
+                    ))
+
+        return entries
+
+    def generate_call_assignments_for_residents(
+        self,
+        oncall_entries: List[OnCallEntry],
+        team_attending_map: List[TeamAttendingAssignment],
+        residents_by_rotation: Dict[str, List[int]],  # rotation_name -> [resident_ids]
+    ) -> List[Dict]:
+        """
+        Generate call assignments by cross-referencing:
+        1. Which attending is on-call (from oncall_entries)
+        2. Which team that attending belongs to (from team_attending_map)
+        3. Which residents are on that rotation (from residents_by_rotation)
+
+        Returns list of call assignment dicts with:
+        - resident_id, date, call_type, attending_name
+        """
+        assignments = []
+
+        # Build attending -> team lookup for each date
+        attending_to_team = {}  # (attending_name, date) -> team_name
+        for ta in team_attending_map:
+            current = ta.start_date
+            while current <= ta.end_date:
+                attending_to_team[(ta.attending_name, current)] = ta.team_name
+                current += timedelta(days=1)
+
+        # Process each on-call entry
+        processed_dates = set()
+        for oc in oncall_entries:
+            if oc.date in processed_dates:
+                continue
+
+            # Find which team this attending belongs to
+            team_name = attending_to_team.get((oc.attending_name, oc.date))
+
+            if not team_name:
+                # Try to find by just attending name (might be on multiple days)
+                for (att, dt), team in attending_to_team.items():
+                    if att == oc.attending_name:
+                        team_name = team
+                        break
+
+            if not team_name:
+                continue
+
+            # Find residents on this rotation/team
+            resident_ids = residents_by_rotation.get(team_name, [])
+
+            if not resident_ids:
+                # Try variations of the team name
+                for rotation_name, rids in residents_by_rotation.items():
+                    if team_name.lower() in rotation_name.lower() or rotation_name.lower() in team_name.lower():
+                        resident_ids = rids
+                        break
+
+            # Create assignments for each resident
+            for rid in resident_ids:
+                # On-call day
+                assignments.append({
+                    'resident_id': rid,
+                    'date': oc.date,
+                    'call_type': 'on-call',
+                    'attending_name': oc.attending_name,
+                    'service': oc.service,
+                })
+
+                # Pre-call (day before)
+                pre_call_date = oc.date - timedelta(days=1)
+                assignments.append({
+                    'resident_id': rid,
+                    'date': pre_call_date,
+                    'call_type': 'pre-call',
+                    'attending_name': oc.attending_name,
+                    'service': oc.service,
+                })
+
+                # Post-call (day after)
+                post_call_date = oc.date + timedelta(days=1)
+                assignments.append({
+                    'resident_id': rid,
+                    'date': post_call_date,
+                    'call_type': 'post-call',
+                    'attending_name': oc.attending_name,
+                    'service': oc.service,
+                })
+
+            processed_dates.add(oc.date)
+
+        return assignments
 
     async def _scrape_with_http(
         self,
