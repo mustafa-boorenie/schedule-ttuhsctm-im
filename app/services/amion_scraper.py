@@ -10,7 +10,16 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
-from playwright.async_api import async_playwright, Browser, Page
+try:
+    from playwright.async_api import async_playwright, Browser, Page
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    PLAYWRIGHT_AVAILABLE = False
+    Browser = None
+    Page = None
+
+import httpx
+from bs4 import BeautifulSoup
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,6 +75,8 @@ class AmionScraper:
 
     async def _get_browser(self) -> Browser:
         """Get or create browser instance."""
+        if not PLAYWRIGHT_AVAILABLE:
+            raise RuntimeError("Playwright not available - using HTTP fallback")
         if not self.browser:
             playwright = await async_playwright().start()
             self.browser = await playwright.chromium.launch(
@@ -106,6 +117,152 @@ class AmionScraper:
         else:
             url = f"{base_url}?month={month_str}&assignment_kind=call&y_axis=names"
 
+        # Try HTTP-based scraping first (faster, no browser needed)
+        try:
+            return await self._scrape_with_http(url, year, month)
+        except Exception as http_error:
+            print(f"HTTP scraping failed: {http_error}, trying Playwright...")
+
+            # Fall back to Playwright if available
+            if PLAYWRIGHT_AVAILABLE:
+                try:
+                    return await self._scrape_with_playwright(url, year, month)
+                except Exception as pw_error:
+                    raise RuntimeError(f"Both HTTP and Playwright scraping failed. HTTP: {http_error}, Playwright: {pw_error}")
+            else:
+                raise RuntimeError(f"HTTP scraping failed and Playwright not available: {http_error}")
+
+    async def _scrape_with_http(
+        self,
+        url: str,
+        year: int,
+        month: int,
+    ) -> Tuple[List[ScrapedCallEntry], List[ScrapedAttendingEntry]]:
+        """Scrape using HTTP requests (no browser needed)."""
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html = response.text
+
+        soup = BeautifulSoup(html, 'html.parser')
+
+        call_entries = self._extract_call_entries_from_soup(soup, year, month)
+        attending_entries = self._extract_attending_entries_from_soup(soup, year, month)
+
+        return call_entries, attending_entries
+
+    def _extract_call_entries_from_soup(
+        self,
+        soup: BeautifulSoup,
+        year: int,
+        month: int,
+    ) -> List[ScrapedCallEntry]:
+        """Extract call entries from parsed HTML."""
+        entries = []
+
+        # Look for table-based schedules (common in Amion)
+        tables = soup.find_all('table')
+
+        for table in tables:
+            rows = table.find_all('tr')
+
+            # Try to identify header row with dates
+            header_dates = []
+            for row in rows[:3]:  # Check first few rows for headers
+                cells = row.find_all(['th', 'td'])
+                for idx, cell in enumerate(cells):
+                    text = cell.get_text(strip=True)
+                    # Check if this looks like a date
+                    if any(day in text for day in ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']):
+                        continue
+                    if re.match(r'\d{1,2}[/-]\d{1,2}', text):
+                        header_dates.append((idx, text))
+
+            # Process data rows
+            for row in rows:
+                cells = row.find_all(['th', 'td'])
+                if not cells:
+                    continue
+
+                # First cell might be resident name
+                first_cell = cells[0].get_text(strip=True)
+
+                # Skip header/label rows
+                if first_cell.lower() in ('name', 'resident', 'date', '', 'call', 'schedule'):
+                    continue
+                if first_cell in ('TY', 'PGY1', 'PGY2', 'PGY3'):
+                    continue
+
+                # Check if this looks like a resident name (has at least 2 parts)
+                if len(first_cell.split()) < 2 and len(first_cell) < 3:
+                    continue
+
+                resident_name = first_cell
+
+                # Check remaining cells for call indicators
+                for idx, cell in enumerate(cells[1:], 1):
+                    cell_text = cell.get_text(strip=True).upper()
+
+                    if not cell_text:
+                        continue
+
+                    # Identify call type
+                    call_type = None
+                    if any(x in cell_text for x in ['ON-CALL', 'ONCALL', 'ON CALL', 'CALL']):
+                        call_type = 'on-call'
+                    elif any(x in cell_text for x in ['PRE-CALL', 'PRECALL', 'PRE CALL', 'PRE']):
+                        call_type = 'pre-call'
+                    elif any(x in cell_text for x in ['POST-CALL', 'POSTCALL', 'POST CALL', 'POST']):
+                        call_type = 'post-call'
+                    elif cell_text in ['C', 'X', '*']:
+                        call_type = 'on-call'
+
+                    if call_type:
+                        # Calculate date from column index
+                        try:
+                            entry_date = date(year, month, idx)
+                            if entry_date.month == month:
+                                entries.append(ScrapedCallEntry(
+                                    resident_name=resident_name,
+                                    date=entry_date,
+                                    call_type=call_type,
+                                    raw_text=cell_text,
+                                ))
+                        except ValueError:
+                            continue
+
+        return entries
+
+    def _extract_attending_entries_from_soup(
+        self,
+        soup: BeautifulSoup,
+        year: int,
+        month: int,
+    ) -> List[ScrapedAttendingEntry]:
+        """Extract attending entries from parsed HTML."""
+        entries = []
+
+        # Look for attending sections
+        for element in soup.find_all(['div', 'section', 'table']):
+            text = element.get_text()
+            if 'attending' in text.lower() or 'faculty' in text.lower():
+                # Parse this section for attending assignments
+                rows = element.find_all('tr') if element.name == 'table' else [element]
+
+                for row in rows:
+                    row_text = row.get_text(strip=True)
+                    parsed = self._parse_attending_row(row_text, year, month)
+                    entries.extend(parsed)
+
+        return entries
+
+    async def _scrape_with_playwright(
+        self,
+        url: str,
+        year: int,
+        month: int,
+    ) -> Tuple[List[ScrapedCallEntry], List[ScrapedAttendingEntry]]:
+        """Scrape using Playwright browser automation."""
         browser = await self._get_browser()
         page = await browser.new_page()
 
