@@ -190,106 +190,143 @@ class AmionScraper:
         year: int,
         month: int,
     ) -> List[TeamAttendingAssignment]:
-        """Extract team-attending assignments from parsed HTML."""
-        entries = []
+        """Extract team-attending assignments from parsed HTML.
 
-        # Look for table-based schedules
+        Amion displays a weekly calendar where:
+        - Each row can represent a team for a specific week
+        - Column headers contain dates
+        - Cells contain attending names
+        """
+        entries = []
+        seen_entries = set()
+
         tables = soup.find_all('table')
 
         for table in tables:
             rows = table.find_all('tr')
+
+            # First, find header rows with dates
+            header_dates = []  # List of (column_index, day_num, full_text)
 
             for row in rows:
                 cells = row.find_all(['th', 'td'])
                 if not cells:
                     continue
 
-                # First cell is the team/service name
-                first_cell = cells[0].get_text(strip=True)
+                # Check if this row contains date headers
+                found_dates = []
+                for idx, cell in enumerate(cells):
+                    cell_text = cell.get_text(strip=True)
+                    date_match = re.match(r'^(\d{1,2})\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?', cell_text)
+                    if date_match:
+                        day_num = int(date_match.group(1))
+                        if 1 <= day_num <= 31:
+                            found_dates.append((idx, day_num, cell_text))
 
-                # Skip header/empty rows
-                if not first_cell or first_cell.lower() in ('name', 'service', 'date', '', 'schedule'):
+                if len(found_dates) >= 5:
+                    header_dates = found_dates
                     continue
 
-                # Check if this looks like a team name (contains "Team" or is a known service)
-                team_name = first_cell
+                if not header_dates:
+                    continue
 
-                # Track consecutive days with same attending for date range
+                # Process data rows
+                team_name = None
+                data_start_idx = 0
+
+                for idx, cell in enumerate(cells[:3]):
+                    cell_text = cell.get_text(strip=True)
+                    if not cell_text:
+                        continue
+                    if re.match(r'\d+[aApP]-\d+[aApP]', cell_text):
+                        data_start_idx = idx + 1
+                        continue
+                    if not team_name and len(cell_text) > 2:
+                        team_name = cell_text
+                        data_start_idx = idx + 1
+
+                if not team_name:
+                    continue
+
+                # Skip if team_name looks like a header
+                if team_name.lower() in ('name', 'service', 'date', 'schedule'):
+                    continue
+
+                # Extract attending assignments
                 current_attending = None
                 range_start = None
+                last_date = None
 
-                for idx, cell in enumerate(cells[1:], 1):
+                for header_idx, day_num, header_text in header_dates:
+                    if header_idx >= len(cells):
+                        continue
+
+                    cell = cells[header_idx]
                     cell_text = cell.get_text(strip=True)
 
+                    # Determine date
+                    try:
+                        if day_num > 20 and month == 1:
+                            entry_date = date(year - 1, 12, day_num)
+                        elif day_num > 20 and month > 1:
+                            entry_date = date(year, month - 1, day_num)
+                        else:
+                            entry_date = date(year, month, day_num)
+                    except ValueError:
+                        continue
+
+                    # Skip dates, times
+                    if re.match(r'^\d{1,2}\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat)', cell_text):
+                        continue
+                    if re.match(r'\d+[aApP]-\d+[aApP]', cell_text):
+                        continue
+
                     if not cell_text:
-                        # End of a range
-                        if current_attending and range_start:
-                            try:
-                                end_date = date(year, month, idx - 1)
-                                if end_date.month == month:
-                                    entries.append(TeamAttendingAssignment(
-                                        team_name=team_name,
-                                        attending_name=current_attending,
-                                        start_date=range_start,
-                                        end_date=end_date,
-                                        raw_text=current_attending,
-                                    ))
-                            except ValueError:
-                                pass
+                        # End current range
+                        if current_attending and range_start and last_date:
+                            entry_key = (team_name, current_attending, range_start, last_date)
+                            if entry_key not in seen_entries:
+                                seen_entries.add(entry_key)
+                                entries.append(TeamAttendingAssignment(
+                                    team_name=team_name,
+                                    attending_name=current_attending,
+                                    start_date=range_start,
+                                    end_date=last_date,
+                                ))
                         current_attending = None
                         range_start = None
                         continue
 
-                    # Skip time entries like "8A-6P"
-                    if re.match(r'\d+[AP]-\d+[AP]', cell_text.upper()):
-                        continue
-
-                    # This should be an attending name
                     attending_name = cell_text.upper()
 
-                    try:
-                        entry_date = date(year, month, idx)
-                        if entry_date.month != month:
-                            continue
-                    except ValueError:
-                        continue
-
                     if attending_name != current_attending:
-                        # Save previous range if exists
-                        if current_attending and range_start:
-                            try:
-                                end_date = date(year, month, idx - 1)
-                                if end_date.month == month:
-                                    entries.append(TeamAttendingAssignment(
-                                        team_name=team_name,
-                                        attending_name=current_attending,
-                                        start_date=range_start,
-                                        end_date=end_date,
-                                        raw_text=current_attending,
-                                    ))
-                            except ValueError:
-                                pass
-
-                        # Start new range
+                        # Save previous range
+                        if current_attending and range_start and last_date:
+                            entry_key = (team_name, current_attending, range_start, last_date)
+                            if entry_key not in seen_entries:
+                                seen_entries.add(entry_key)
+                                entries.append(TeamAttendingAssignment(
+                                    team_name=team_name,
+                                    attending_name=current_attending,
+                                    start_date=range_start,
+                                    end_date=last_date,
+                                ))
                         current_attending = attending_name
                         range_start = entry_date
 
-                # Don't forget the last range
-                if current_attending and range_start:
-                    try:
-                        # End at last day of month or last column
-                        last_day = min(len(cells) - 1, 31)
-                        end_date = date(year, month, last_day)
-                        if end_date.month == month:
-                            entries.append(TeamAttendingAssignment(
-                                team_name=team_name,
-                                attending_name=current_attending,
-                                start_date=range_start,
-                                end_date=end_date,
-                                raw_text=current_attending,
-                            ))
-                    except ValueError:
-                        pass
+                    last_date = entry_date
+
+                # Don't forget last range
+                if current_attending and range_start and last_date:
+                    entry_key = (team_name, current_attending, range_start, last_date)
+                    if entry_key not in seen_entries:
+                        seen_entries.add(entry_key)
+                        entries.append(TeamAttendingAssignment(
+                            team_name=team_name,
+                            attending_name=current_attending,
+                            start_date=range_start,
+                            end_date=last_date,
+                        ))
 
         return entries
 
@@ -318,41 +355,108 @@ class AmionScraper:
         year: int,
         month: int,
     ) -> List[OnCallEntry]:
-        """Extract on-call entries from parsed HTML."""
+        """Extract on-call entries from parsed HTML.
+
+        Amion displays a weekly calendar where:
+        - Each row represents a week
+        - Column headers contain dates (e.g., "4 Sun", "5 Mon", "1 Jan")
+        - Cells contain attending names
+        """
         entries = []
+        seen_entries = set()  # Avoid duplicates
 
         tables = soup.find_all('table')
 
         for table in tables:
             rows = table.find_all('tr')
 
+            # First, find the header row with dates
+            header_dates = []  # List of (column_index, date) tuples
+
             for row in rows:
                 cells = row.find_all(['th', 'td'])
                 if not cells:
                     continue
 
-                # First cell is the service name (e.g., "Hospitalist On-Call")
-                service_name = cells[0].get_text(strip=True)
+                # Check if this row contains date headers
+                found_dates = []
+                for idx, cell in enumerate(cells):
+                    cell_text = cell.get_text(strip=True)
+                    # Look for patterns like "4 Sun", "5 Mon", "1 Jan", "28 Sun"
+                    date_match = re.match(r'^(\d{1,2})\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?', cell_text)
+                    if date_match:
+                        day_num = int(date_match.group(1))
+                        if 1 <= day_num <= 31:
+                            found_dates.append((idx, day_num, cell_text))
 
-                if not service_name or service_name.lower() in ('name', 'service', 'date', ''):
+                # If we found multiple dates in this row, it's likely a header
+                if len(found_dates) >= 5:
+                    header_dates = found_dates
                     continue
 
-                for idx, cell in enumerate(cells[1:], 1):
+                # Process data rows using the header dates
+                if not header_dates:
+                    continue
+
+                # First cell(s) might be service name and time
+                service_name = None
+                time_slot = None
+                data_start_idx = 0
+
+                for idx, cell in enumerate(cells[:3]):  # Check first 3 cells
+                    cell_text = cell.get_text(strip=True)
+                    if not cell_text:
+                        continue
+                    # Check if it's a time slot like "7a-7a"
+                    if re.match(r'\d+[aApP]-\d+[aApP]', cell_text):
+                        time_slot = cell_text
+                        data_start_idx = idx + 1
+                    elif not service_name and len(cell_text) > 2:
+                        service_name = cell_text
+                        data_start_idx = idx + 1
+
+                if not service_name:
+                    continue
+
+                # Now extract attending names from data cells
+                for header_idx, day_num, header_text in header_dates:
+                    # Adjust index based on where data starts
+                    cell_idx = header_idx
+                    if cell_idx >= len(cells):
+                        continue
+
+                    cell = cells[cell_idx]
                     cell_text = cell.get_text(strip=True)
 
                     if not cell_text:
                         continue
 
-                    # Skip time entries
-                    if re.match(r'\d+[AP]-\d+[AP]', cell_text.upper()):
+                    # Skip if it looks like a date or time
+                    if re.match(r'^\d{1,2}\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat|Jan|Feb)', cell_text):
+                        continue
+                    if re.match(r'\d+[aApP]-\d+[aApP]', cell_text):
                         continue
 
+                    # Determine the actual date
+                    # If day_num > 20 and we're looking at early month, it's previous month
+                    # If day_num < 10 and header mentions month name, use that
                     try:
-                        entry_date = date(year, month, idx)
-                        if entry_date.month != month:
-                            continue
+                        if day_num > 20 and 'Jan' not in header_text and month == 1:
+                            # Previous month (December)
+                            entry_date = date(year - 1, 12, day_num)
+                        elif day_num > 20 and month > 1:
+                            # Previous month
+                            entry_date = date(year, month - 1, day_num)
+                        else:
+                            entry_date = date(year, month, day_num)
                     except ValueError:
                         continue
+
+                    # Create unique key to avoid duplicates
+                    entry_key = (cell_text.upper(), entry_date, service_name)
+                    if entry_key in seen_entries:
+                        continue
+                    seen_entries.add(entry_key)
 
                     entries.append(OnCallEntry(
                         attending_name=cell_text.upper(),
