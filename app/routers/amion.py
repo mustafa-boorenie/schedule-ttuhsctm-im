@@ -566,15 +566,20 @@ async def sync_call_schedule(
     try:
         today = date.today()
 
-        # Step 1: Get team-attending assignments
-        team_attending = await scraper.scrape_team_attending_schedule(
+        # Step 1: Get team-attending assignments (filter for hospitalist teams only)
+        all_team_attending = await scraper.scrape_team_attending_schedule(
             all_rows_url, today.year, today.month
         )
+        # Only keep hospitalist teams (Red, Blue, Green, Orange, Purple)
+        hospitalist_teams = ['Red Team', 'Blue Team', 'Green Team', 'Orange Team', 'Purple Team']
+        team_attending = [ta for ta in all_team_attending if ta.team_name in hospitalist_teams]
 
-        # Step 2: Get on-call schedule
-        oncall_entries = await scraper.scrape_oncall_schedule(
+        # Step 2: Get on-call schedule (filter for Hospitalist On-Call only)
+        all_oncall_entries = await scraper.scrape_oncall_schedule(
             oncall_url, today.year, today.month
         )
+        # Filter to only Hospitalist On-Call (the main call schedule)
+        oncall_entries = [e for e in all_oncall_entries if 'Hospitalist' in e.service]
 
         # Step 3: Get residents by rotation from database
         from ..models import Resident, ScheduleAssignment, Rotation
