@@ -630,6 +630,7 @@ async def sync_call_schedule(
 
             if existing:
                 existing.service = ca.get('service')
+                existing.attending_name = ca.get('attending_name')
                 existing.source = DataSource.AMION
                 updated += 1
             else:
@@ -638,6 +639,7 @@ async def sync_call_schedule(
                     date=ca['date'],
                     call_type=ca['call_type'],
                     service=ca.get('service'),
+                    attending_name=ca.get('attending_name'),
                     academic_year_id=academic_year.id if academic_year else None,
                     source=DataSource.AMION,
                 )

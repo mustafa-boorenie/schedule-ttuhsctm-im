@@ -191,6 +191,7 @@ class CallAssignment(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     service: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     location: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    attending_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # Attending on call
     academic_year_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("academic_years.id"), nullable=True
     )

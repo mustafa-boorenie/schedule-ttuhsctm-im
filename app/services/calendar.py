@@ -280,7 +280,9 @@ class CalendarService:
 
             # Summary with emoji for visibility
             summary = f"{config['emoji']} {config['display']}"
-            if assignment.service:
+            if assignment.attending_name:
+                summary += f" - {assignment.attending_name}"
+            elif assignment.service:
                 summary += f" - {assignment.service}"
             event.add("summary", summary)
 
@@ -302,6 +304,8 @@ class CalendarService:
                 f"Call Status: {config['display']}",
                 f"Date: {assignment.date.strftime('%A, %B %d, %Y')}",
             ]
+            if assignment.attending_name:
+                description_parts.append(f"Attending: {assignment.attending_name}")
             if assignment.service:
                 description_parts.append(f"Service: {assignment.service}")
             if assignment.location:
