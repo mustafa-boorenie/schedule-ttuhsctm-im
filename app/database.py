@@ -39,25 +39,9 @@ async def get_db() -> AsyncSession:
 
 
 async def init_db():
-    """Initialize database tables and add missing columns."""
-    from sqlalchemy import text
-    import logging
-
-    logger = logging.getLogger(__name__)
-
+    """Initialize database tables."""
     async with engine.begin() as conn:
-        # Create tables that don't exist
         await conn.run_sync(Base.metadata.create_all)
-
-        # Add missing columns to existing tables (SQLAlchemy create_all doesn't do this)
-        try:
-            await conn.execute(text(
-                "ALTER TABLE call_assignments ADD COLUMN IF NOT EXISTS attending_name VARCHAR(100)"
-            ))
-            logger.info("Ensured attending_name column exists")
-        except Exception as e:
-            # Might fail if table doesn't exist yet or syntax not supported
-            logger.debug(f"Column migration note: {e}")
 
 
 async def close_db():
