@@ -50,20 +50,14 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
         # Add missing columns to existing tables (SQLAlchemy create_all doesn't do this)
-        # Check and add attending_name to call_assignments if missing
         try:
-            # First check if column exists
-            result = await conn.execute(text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'call_assignments' AND column_name = 'attending_name'
-            """))
-            if result.fetchone() is None:
-                await conn.execute(text("""
-                    ALTER TABLE call_assignments ADD COLUMN attending_name VARCHAR(100)
-                """))
-                logger.info("Added attending_name column to call_assignments")
+            await conn.execute(text(
+                "ALTER TABLE call_assignments ADD COLUMN IF NOT EXISTS attending_name VARCHAR(100)"
+            ))
+            logger.info("Ensured attending_name column exists")
         except Exception as e:
-            logger.warning(f"Could not add attending_name column: {e}")
+            # Might fail if table doesn't exist yet or syntax not supported
+            logger.debug(f"Column migration note: {e}")
 
 
 async def close_db():
