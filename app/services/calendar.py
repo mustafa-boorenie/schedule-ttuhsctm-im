@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta, time
 from typing import Optional, List, Tuple
 from uuid import uuid4
 
-from icalendar import Calendar, Event
+from icalendar import Calendar, Event, vDuration
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,7 +109,7 @@ class CalendarService:
         cal.add("method", "PUBLISH")
         cal.add("x-wr-calname", f"{resident.name} - Schedule")
         cal.add("x-wr-timezone", "America/New_York")
-        cal.add("refresh-interval;value=duration", "PT6H")  # Refresh every 6 hours
+        cal.add('x-published-ttl', vDuration(timedelta(hours=6)))  # Refresh every 6 hours (iOS compatible)
 
         # Add rotation events
         if include_rotations:
