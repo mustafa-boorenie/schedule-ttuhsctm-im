@@ -832,26 +832,64 @@
         residentToken = urlParams.get('token') || localStorage.getItem('resident_token');
 
         if (!residentToken) {
-            // Show token input modal
+            // Show email login modal
             document.body.innerHTML = `
                 <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem;">
                     <div class="card" style="max-width: 400px; width: 100%;">
                         <h2 style="margin-bottom: 1rem;">Welcome</h2>
-                        <p class="text-muted mb-2">Enter your calendar token to view your schedule.</p>
+                        <p class="text-muted mb-2">Enter your TTUHSC email to view your schedule.</p>
                         <div class="form-group">
-                            <input type="text" class="form-input" id="tokenInput" placeholder="Enter your token">
+                            <input type="email" class="form-input" id="emailInput" placeholder="e.g., mbooreni@ttuhsc.edu">
                         </div>
-                        <button class="btn btn-primary btn-block" onclick="submitToken()">Continue</button>
+                        <div id="loginError" style="color: #ef4444; margin-bottom: 1rem; display: none;"></div>
+                        <button class="btn btn-primary btn-block" id="loginBtn" onclick="submitEmail()">Continue</button>
                     </div>
                 </div>
             `;
+
+            // Allow Enter key to submit
+            document.getElementById('emailInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') submitEmail();
+            });
         }
 
-        function submitToken() {
-            const token = document.getElementById('tokenInput').value.trim();
-            if (token) {
-                localStorage.setItem('resident_token', token);
-                window.location.href = '?token=' + token;
+        async function submitEmail() {
+            const email = document.getElementById('emailInput').value.trim();
+            const errorEl = document.getElementById('loginError');
+            const btn = document.getElementById('loginBtn');
+
+            if (!email) {
+                errorEl.textContent = 'Please enter your email';
+                errorEl.style.display = 'block';
+                return;
+            }
+
+            btn.textContent = 'Logging in...';
+            btn.disabled = true;
+            errorEl.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/resident/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Login failed');
+                }
+
+                // Store the calendar token and reload
+                localStorage.setItem('resident_token', data.resident.calendar_token);
+                localStorage.setItem('resident_name', data.resident.name);
+                window.location.href = '?token=' + data.resident.calendar_token;
+            } catch (err) {
+                errorEl.textContent = err.message;
+                errorEl.style.display = 'block';
+                btn.textContent = 'Continue';
+                btn.disabled = false;
             }
         }
 
