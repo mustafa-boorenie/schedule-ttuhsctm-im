@@ -24,7 +24,7 @@ from .middleware import (
     SecurityHeadersMiddleware,
 )
 from .models import Resident, Rotation, ScheduleAssignment, AcademicYear, Admin
-from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router
+from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router, resident_auth_router
 from .services.excel_import import ExcelImportService, seed_default_day_off_types
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
@@ -121,6 +121,7 @@ app.include_router(schedule_router)
 app.include_router(amion_router)
 app.include_router(days_off_router)
 app.include_router(swap_router)
+app.include_router(resident_auth_router)
 
 
 # ============== Public API Endpoints ==============

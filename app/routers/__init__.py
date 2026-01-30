@@ -7,6 +7,7 @@ from .schedule import router as schedule_router
 from .amion import router as amion_router
 from .days_off import router as days_off_router
 from .swap import router as swap_router
+from .resident_auth import router as resident_auth_router
 
 __all__ = [
     "admin_auth_router",
@@ -15,4 +16,5 @@ __all__ = [
     "amion_router",
     "days_off_router",
     "swap_router",
+    "resident_auth_router",
 ]
