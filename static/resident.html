@@ -823,35 +823,35 @@
 
     <script>
         // ===== Configuration =====
-        let residentToken = null;
+        let residentEmail = null;
         let residentData = null;
         let currentMonth = new Date();
 
-        // Get token from URL or localStorage
+        // Get email from URL or localStorage
         const urlParams = new URLSearchParams(window.location.search);
-        residentToken = urlParams.get('token') || localStorage.getItem('resident_token');
+        residentEmail = urlParams.get('email') || localStorage.getItem('resident_email');
 
-        if (!residentToken) {
-            // Show token input modal
+        if (!residentEmail) {
+            // Show email input modal
             document.body.innerHTML = `
                 <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem;">
                     <div class="card" style="max-width: 400px; width: 100%;">
                         <h2 style="margin-bottom: 1rem;">Welcome</h2>
-                        <p class="text-muted mb-2">Enter your calendar token to view your schedule.</p>
+                        <p class="text-muted mb-2">Enter your email to view your schedule.</p>
                         <div class="form-group">
-                            <input type="text" class="form-input" id="tokenInput" placeholder="Enter your token">
+                            <input type="email" class="form-input" id="emailInput" placeholder="Enter your email">
                         </div>
-                        <button class="btn btn-primary btn-block" onclick="submitToken()">Continue</button>
+                        <button class="btn btn-primary btn-block" onclick="submitEmail()">Continue</button>
                     </div>
                 </div>
             `;
         }
 
-        function submitToken() {
-            const token = document.getElementById('tokenInput').value.trim();
-            if (token) {
-                localStorage.setItem('resident_token', token);
-                window.location.href = '?token=' + token;
+        function submitEmail() {
+            const email = document.getElementById('emailInput').value.trim();
+            if (email) {
+                localStorage.setItem('resident_email', email);
+                window.location.href = '?email=' + encodeURIComponent(email);
             }
         }
 
@@ -931,7 +931,7 @@
             // Load resident info
             try {
                 const residents = await api('/api/residents');
-                // For now, just show the first resident or use token
+                // For now, just show the first resident or use email
                 $('#residentName').textContent = residentData?.name || 'Resident';
             } catch (e) {}
 
@@ -964,9 +964,9 @@
             await loadWeekPreview();
 
             // Set calendar URL
-            if (residentToken) {
+            if (residentEmail) {
                 const baseUrl = window.location.origin;
-                const calUrl = `${baseUrl}/api/calendar/${residentToken}.ics`;
+                const calUrl = `${baseUrl}/api/calendar/by-email.ics?email=${encodeURIComponent(residentEmail)}`;
                 $('#calendarUrl').textContent = calUrl;
             }
 
@@ -1000,9 +1000,9 @@
         }
 
         async function loadSwapBadge() {
-            if (!residentToken) return;
+            if (!residentEmail) return;
             try {
-                const incoming = await api(`/api/swaps/incoming?token=${residentToken}&status=pending`);
+                const incoming = await api(`/api/swaps/incoming?email=${encodeURIComponent(residentEmail)}&status=pending`);
                 const badge = $('#swapBadge');
                 if (incoming.length > 0) {
                     badge.textContent = incoming.length;
@@ -1251,14 +1251,14 @@
         });
 
         async function loadSwaps(type) {
-            if (!residentToken) {
-                $('#swapsList').innerHTML = '<div class="empty-state">Please enter your token to view swaps</div>';
+            if (!residentEmail) {
+                $('#swapsList').innerHTML = '<div class="empty-state">Please enter your email to view swaps</div>';
                 return;
             }
 
             try {
                 const endpoint = type === 'mine' ? 'mine' : 'incoming';
-                const swaps = await api(`/api/swaps/${endpoint}?token=${residentToken}`);
+                const swaps = await api(`/api/swaps/${endpoint}?email=${encodeURIComponent(residentEmail)}`);
 
                 if (swaps.length === 0) {
                     $('#swapsList').innerHTML = `<div class="empty-state">No ${type === 'mine' ? 'outgoing' : 'incoming'} swap requests</div>`;
@@ -1313,7 +1313,7 @@
 
         async function confirmSwap(id) {
             try {
-                await fetch(`/api/swaps/${id}/confirm?token=${residentToken}`, { method: 'POST' });
+                await fetch(`/api/swaps/${id}/confirm?email=${encodeURIComponent(residentEmail)}`, { method: 'POST' });
                 showToast('Swap confirmed! Awaiting admin approval.');
                 loadSwaps('incoming');
                 loadSwapBadge();
@@ -1324,7 +1324,7 @@
 
         async function declineSwap(id) {
             try {
-                await fetch(`/api/swaps/${id}/decline?token=${residentToken}`, { method: 'POST' });
+                await fetch(`/api/swaps/${id}/decline?email=${encodeURIComponent(residentEmail)}`, { method: 'POST' });
                 showToast('Swap declined');
                 loadSwaps('incoming');
                 loadSwapBadge();
@@ -1335,7 +1335,7 @@
 
         async function cancelSwap(id) {
             try {
-                await fetch(`/api/swaps/${id}/cancel?token=${residentToken}`, { method: 'POST' });
+                await fetch(`/api/swaps/${id}/cancel?email=${encodeURIComponent(residentEmail)}`, { method: 'POST' });
                 showToast('Swap cancelled');
                 loadSwaps('mine');
             } catch (e) {
@@ -1351,7 +1351,7 @@
         });
 
         // ===== Initialize =====
-        if (residentToken) {
+        if (residentEmail) {
             loadHome();
         }
     </script>

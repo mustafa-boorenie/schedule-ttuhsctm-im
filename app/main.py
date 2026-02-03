@@ -30,6 +30,7 @@ from .services.excel_import import ExcelImportService, seed_default_day_off_type
 from .services.program_rules import ensure_rules_for_current_year
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
+from .services.resident_lookup import get_resident_by_email
 from .settings import settings
 
 # Legacy imports for backward compatibility
@@ -215,11 +216,26 @@ async def get_calendar_by_token(
     - include_call: Include call status events (default: true)
     - include_days_off: Include days off events (default: true)
     """
+    raise HTTPException(
+        status_code=410,
+        detail="Calendar token access is deprecated. Use /api/calendar/by-email?email=... instead.",
+    )
+
+
+@app.get("/api/calendar/by-email.ics")
+async def get_calendar_by_email(
+    email: str,
+    include_rotations: bool = True,
+    include_call: bool = True,
+    include_days_off: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate and return an ICS calendar file for a resident by email."""
     try:
-        # Try new database-backed calendar generation
+        resident = await get_resident_by_email(db, email)
         ics_content, resident_name = await generate_resident_calendar_by_token(
             db=db,
-            calendar_token=calendar_token,
+            calendar_token=resident.calendar_token,
             include_rotations=include_rotations,
             include_call=include_call,
             include_days_off=include_days_off,
@@ -230,11 +246,10 @@ async def get_calendar_by_token(
             headers={
                 "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
                 "Cache-Control": "no-cache, no-store, must-revalidate",
-            }
+            },
         )
-    except ValueError:
-        # Token not found in database, try legacy lookup by name
-        return await get_calendar_legacy(calendar_token)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating calendar: {str(e)}")
 

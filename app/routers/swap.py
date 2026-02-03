@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from ..database import get_db
 from ..models import Admin, Resident, SwapRequest, SwapStatus, ScheduleAssignment, Rotation
 from ..services.swap import SwapService
+from ..services.resident_lookup import get_resident_by_email
 from .admin_auth import require_admin
 
 router = APIRouter(tags=["swaps"])
@@ -61,18 +62,15 @@ class EligibleTargetResponse(BaseModel):
 
 # ============== Helper: Get Resident from Token ==============
 
-async def get_resident_from_token(
-    token: str,
+async def get_resident_from_email(
+    email: str,
     db: AsyncSession,
 ) -> Resident:
-    """Get a resident by their calendar token."""
-    result = await db.execute(
-        select(Resident).where(Resident.calendar_token == token)
-    )
-    resident = result.scalar_one_or_none()
-    if not resident:
-        raise HTTPException(status_code=404, detail="Invalid resident token")
-    return resident
+    """Get a resident by their email (exact or fuzzy match)."""
+    try:
+        return await get_resident_by_email(db, email)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 # ============== Resident API ==============
@@ -80,7 +78,7 @@ async def get_resident_from_token(
 @router.post("/api/swaps", response_model=SwapRequestResponse)
 async def create_swap_request(
     data: SwapRequestCreate,
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -88,7 +86,7 @@ async def create_swap_request(
 
     The request will be in PENDING status until the target confirms.
     """
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     try:
@@ -107,12 +105,12 @@ async def create_swap_request(
 
 @router.get("/api/swaps/mine", response_model=List[SwapRequestResponse])
 async def get_my_swap_requests(
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get swap requests I initiated."""
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     status_filter = SwapStatus(status) if status else None
@@ -129,12 +127,12 @@ async def get_my_swap_requests(
 
 @router.get("/api/swaps/incoming", response_model=List[SwapRequestResponse])
 async def get_incoming_swap_requests(
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     status: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """Get swap requests where I am the target."""
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     status_filter = SwapStatus(status) if status else None
@@ -152,7 +150,7 @@ async def get_incoming_swap_requests(
 @router.post("/api/swaps/{swap_id}/confirm")
 async def confirm_swap_request(
     swap_id: int,
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -160,7 +158,7 @@ async def confirm_swap_request(
 
     Moves the swap to PEER_CONFIRMED status.
     """
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     try:
@@ -173,7 +171,7 @@ async def confirm_swap_request(
 @router.post("/api/swaps/{swap_id}/decline")
 async def decline_swap_request(
     swap_id: int,
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -181,7 +179,7 @@ async def decline_swap_request(
 
     Moves the swap to REJECTED status.
     """
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     try:
@@ -194,7 +192,7 @@ async def decline_swap_request(
 @router.post("/api/swaps/{swap_id}/cancel")
 async def cancel_swap_request(
     swap_id: int,
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -202,7 +200,7 @@ async def cancel_swap_request(
 
     Only works for PENDING or PEER_CONFIRMED swaps.
     """
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     try:
@@ -215,7 +213,7 @@ async def cancel_swap_request(
 @router.get("/api/swaps/eligible-targets", response_model=List[EligibleTargetResponse])
 async def get_eligible_swap_targets(
     assignment_id: int,
-    token: str = Query(..., description="Resident calendar token"),
+    email: str = Query(..., description="Resident email"),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -224,7 +222,7 @@ async def get_eligible_swap_targets(
     Returns residents with compatible PGY levels who have assignments
     for the same week.
     """
-    resident = await get_resident_from_token(token, db)
+    resident = await get_resident_from_email(email, db)
 
     service = SwapService(db)
     targets = await service.get_eligible_swap_targets(resident.id, assignment_id)

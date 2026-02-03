@@ -75,6 +75,7 @@ class ResidentResponse(ResidentBase):
 class ResidentListResponse(BaseModel):
     id: int
     name: str
+    email: Optional[EmailStr] = None
     pgy_level: PGYLevel
     is_active: bool
 

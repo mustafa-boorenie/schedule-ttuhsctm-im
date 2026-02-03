@@ -43,7 +43,9 @@
       "Bash(railway service:*)",
       "Bash(railway logs:*)",
       "Bash(python3:*)",
-      "WebFetch(domain:schedule-ttuhsctm-im-production-829d.up.railway.app)"
+      "WebFetch(domain:schedule-ttuhsctm-im-production-829d.up.railway.app)",
+      "Bash(git status:*)",
+      "Bash(echo:*)"
     ]
   }
 }
