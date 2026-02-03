@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     # Magic link settings
     magic_link_expire_minutes: int = 15
     session_expire_days: int = 7
+    admin_password: Optional[str] = None
+
+    # Scheduler
+    scheduler_enabled: bool = True
 
     # OpenAI (for LLM parsing)
     openai_api_key: Optional[str] = None

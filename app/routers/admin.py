@@ -12,7 +12,8 @@ from sqlalchemy.orm import selectinload
 from ..database import get_db
 from ..models import (
     Admin, Resident, Rotation, ScheduleAssignment, AcademicYear,
-    DayOffType, DayOff, SwapRequest, AuditLog, PGYLevel, SwapStatus, DataSource
+    DayOffType, DayOff, SwapRequest, AuditLog, PGYLevel, SwapStatus, DataSource,
+    ProgramRules, AmionSyncLog
 )
 from ..schemas import (
     ResidentCreate, ResidentUpdate, ResidentResponse, ResidentListResponse,
@@ -24,7 +25,10 @@ from ..schemas import (
     AdminCreate, AdminResponse,
     AuditLogResponse,
     SwapRequestResponse, SwapApproval,
+    ProgramRulesResponse, ProgramRulesUpdate,
 )
+from ..services.program_rules import get_or_create_rules
+from ..services.amion_scraper import run_amion_sync
 from .admin_auth import require_admin
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -59,6 +63,67 @@ async def create_academic_year(
     db.add(academic_year)
     await db.flush()
     return academic_year
+
+
+# ============== Program Rules ==============
+
+@router.get("/program-rules", response_model=ProgramRulesResponse)
+async def get_program_rules(
+    academic_year_id: Optional[int] = None,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get program rules for an academic year (defaults to current)."""
+    if academic_year_id:
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.id == academic_year_id)
+        )
+        academic_year = result.scalar_one_or_none()
+    else:
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.is_current == True)
+        )
+        academic_year = result.scalar_one_or_none()
+
+    if not academic_year:
+        raise HTTPException(status_code=404, detail="Academic year not found")
+
+    rules = await get_or_create_rules(db, academic_year.id)
+    return rules
+
+
+@router.put("/program-rules", response_model=ProgramRulesResponse)
+async def update_program_rules(
+    data: ProgramRulesUpdate,
+    academic_year_id: Optional[int] = None,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update program rules for an academic year (defaults to current)."""
+    if academic_year_id:
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.id == academic_year_id)
+        )
+        academic_year = result.scalar_one_or_none()
+    else:
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.is_current == True)
+        )
+        academic_year = result.scalar_one_or_none()
+
+    if not academic_year:
+        raise HTTPException(status_code=404, detail="Academic year not found")
+
+    rules = await get_or_create_rules(db, academic_year.id)
+    update_data = data.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(rules, key, value)
+
+    await _create_audit_log(
+        db, admin.id, "program_rules_update", "program_rules", rules.id, None, update_data
+    )
+
+    return rules
 
 
 # ============== Residents ==============
@@ -493,6 +558,61 @@ async def get_audit_log(
     return result.scalars().all()
 
 
+# ============== Notifications / Refresh ==============
+
+@router.get("/notifications")
+async def get_notifications(
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get pending approvals and sync conflicts."""
+    pending_swaps = await db.execute(
+        select(func.count(SwapRequest.id)).where(SwapRequest.status == SwapStatus.PENDING)
+    )
+    peer_confirmed = await db.execute(
+        select(func.count(SwapRequest.id)).where(SwapRequest.status == SwapStatus.PEER_CONFIRMED)
+    )
+
+    result = await db.execute(
+        select(AmionSyncLog)
+        .where(AmionSyncLog.errors.isnot(None))
+        .order_by(AmionSyncLog.started_at.desc())
+        .limit(1)
+    )
+    last_sync = result.scalar_one_or_none()
+    unmatched = 0
+    if last_sync and last_sync.errors:
+        unmatched = len(last_sync.errors.get("unmatched_names", []))
+
+    return {
+        "pending_swaps": pending_swaps.scalar() or 0,
+        "peer_confirmed_swaps": peer_confirmed.scalar() or 0,
+        "amion_unmatched_names": unmatched,
+        "amion_last_sync_at": last_sync.started_at.isoformat() if last_sync else None,
+    }
+
+
+@router.post("/refresh")
+async def refresh_data(
+    trigger_amion_sync: bool = False,
+    admin: Admin = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Refresh data and optionally trigger an Amion sync."""
+    sync_result = None
+    if trigger_amion_sync:
+        sync_result = await run_amion_sync(db=db, months_to_sync=1)
+        await db.commit()
+
+    notifications = await get_notifications(admin=admin, db=db)
+    return {
+        "status": "ok",
+        "sync_triggered": trigger_amion_sync,
+        "sync_result": sync_result,
+        "notifications": notifications,
+    }
+
+
 # ============== Helper Functions ==============
 
 async def _create_audit_log(
@@ -501,8 +621,8 @@ async def _create_audit_log(
     action: str,
     entity_type: str,
     entity_id: int,
-    old_value: dict | None,
-    new_value: dict | None,
+    old_value: Optional[dict],
+    new_value: Optional[dict],
 ):
     """Create an audit log entry."""
     # Convert date objects to strings for JSON serialization

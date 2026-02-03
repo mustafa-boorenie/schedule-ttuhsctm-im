@@ -2,6 +2,7 @@
 FastAPI application for the Residency Rotation Calendar Subscription service.
 """
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -26,6 +27,7 @@ from .middleware import (
 from .models import Resident, Rotation, ScheduleAssignment, AcademicYear, Admin
 from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router
 from .services.excel_import import ExcelImportService, seed_default_day_off_types
+from .services.program_rules import ensure_rules_for_current_year
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
 from .settings import settings
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI):
     # Seed default data
     async for db in get_db():
         await seed_default_day_off_types(db)
+        await ensure_rules_for_current_year(db)
         await db.commit()
         break
     logger.info("Database initialized successfully")
@@ -75,9 +78,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.info(f"No legacy schedule file at {SCHEDULE_PATH}")
 
-    # Start background scheduler for automated tasks
-    scheduler.start()
-    logger.info("Background scheduler started")
+    # Start background scheduler for automated tasks (avoid multi-worker duplication)
+    if _should_start_scheduler():
+        scheduler.start()
+        logger.info("Background scheduler started")
+    else:
+        logger.info("Background scheduler not started (non-primary process)")
 
     logger.info(f"Application ready at {settings.base_url}")
 
@@ -121,6 +127,26 @@ app.include_router(schedule_router)
 app.include_router(amion_router)
 app.include_router(days_off_router)
 app.include_router(swap_router)
+
+
+def _should_start_scheduler() -> bool:
+    """Start scheduler only in a designated primary process."""
+    if not settings.scheduler_enabled:
+        return False
+
+    scheduler_role = os.environ.get("SCHEDULER_ROLE")
+    if scheduler_role:
+        return scheduler_role.lower() == "primary"
+
+    web_concurrency = os.environ.get("WEB_CONCURRENCY")
+    if web_concurrency and web_concurrency != "1":
+        return False
+
+    uvicorn_worker = os.environ.get("UVICORN_WORKER_ID")
+    if uvicorn_worker and uvicorn_worker != "0":
+        return False
+
+    return True
 
 
 # ============== Public API Endpoints ==============

@@ -118,6 +118,84 @@
 
         .page-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
+        /* ===== Split Layout ===== */
+        .split-layout {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 1.25rem;
+        }
+
+        .mode-toggle {
+            display: inline-flex;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .mode-toggle button {
+            padding: 0.5rem 0.9rem;
+            background: transparent;
+            color: var(--text-secondary);
+            border: none;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .mode-toggle button.active {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+
+        .chatbox {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            min-height: 420px;
+        }
+
+        .chat-log {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem;
+            min-height: 280px;
+            max-height: 420px;
+            overflow-y: auto;
+            color: var(--text-secondary);
+        }
+
+        .chat-input-row {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .notifications-panel {
+            position: sticky;
+            top: 80px;
+        }
+
+        .notification-item {
+            padding: 0.75rem 0.9rem;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--bg-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .notification-item.warning {
+            border-color: rgba(245, 158, 11, 0.5);
+            background: rgba(245, 158, 11, 0.08);
+        }
+
+        .notification-title { font-weight: 600; margin-bottom: 0.25rem; }
+        .notification-meta { color: var(--text-secondary); font-size: 0.8rem; }
+
+        @media (max-width: 1100px) {
+            .split-layout { grid-template-columns: 1fr; }
+            .notifications-panel { position: static; }
+        }
+
         /* ===== Cards ===== */
         .card {
             background: var(--bg-card);
@@ -354,6 +432,12 @@
 
         .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent-primary); }
 
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 0.75rem 1rem;
+        }
+
         /* ===== Modal ===== */
         .modal-overlay {
             position: fixed;
@@ -530,6 +614,9 @@
         </div>
         <div class="nav-user">
             <span class="nav-user-email" id="adminEmail">Loading...</span>
+            <button class="btn btn-secondary btn-sm" id="refreshBtn">
+                ⟳ Refresh
+            </button>
             <button class="btn btn-secondary btn-sm" id="logoutBtn">Logout</button>
         </div>
     </nav>
@@ -586,8 +673,12 @@
         <!-- ===== Schedule Tab ===== -->
         <div id="schedule" class="tab-content">
             <div class="page-header">
-                <h1 class="page-title">Schedule Grid</h1>
+                <h1 class="page-title">Schedule</h1>
                 <div class="page-actions">
+                    <div class="mode-toggle" id="scheduleModeToggle">
+                        <button type="button" class="active" data-mode="calendar">Calendar</button>
+                        <button type="button" data-mode="chat">Chat</button>
+                    </div>
                     <button class="btn btn-secondary" id="exportBtn">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -606,32 +697,67 @@
                     </button>
                 </div>
             </div>
+            <div class="split-layout">
+                <div>
+                    <div id="calendarMode">
+                        <div class="filters">
+                            <div class="filter-group">
+                                <span class="filter-label">PGY Level:</span>
+                                <select class="filter-select" id="filterPGY">
+                                    <option value="">All Levels</option>
+                                    <option value="TY">TY</option>
+                                    <option value="PGY1">PGY1</option>
+                                    <option value="PGY2">PGY2</option>
+                                    <option value="PGY3">PGY3</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <span class="filter-label">View:</span>
+                                <select class="filter-select" id="filterWeeks">
+                                    <option value="12">12 Weeks</option>
+                                    <option value="26">26 Weeks</option>
+                                    <option value="52" selected>Full Year</option>
+                                </select>
+                            </div>
+                        </div>
 
-            <div class="filters">
-                <div class="filter-group">
-                    <span class="filter-label">PGY Level:</span>
-                    <select class="filter-select" id="filterPGY">
-                        <option value="">All Levels</option>
-                        <option value="TY">TY</option>
-                        <option value="PGY1">PGY1</option>
-                        <option value="PGY2">PGY2</option>
-                        <option value="PGY3">PGY3</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <span class="filter-label">View:</span>
-                    <select class="filter-select" id="filterWeeks">
-                        <option value="12">12 Weeks</option>
-                        <option value="26">26 Weeks</option>
-                        <option value="52" selected>Full Year</option>
-                    </select>
-                </div>
-            </div>
+                        <div class="card" style="padding: 0;">
+                            <div class="grid-container" id="scheduleGrid">
+                                <div class="loading"><div class="spinner"></div>Loading schedule...</div>
+                            </div>
+                        </div>
+                    </div>
 
-            <div class="card" style="padding: 0;">
-                <div class="grid-container" id="scheduleGrid">
-                    <div class="loading"><div class="spinner"></div>Loading schedule...</div>
+                    <div id="chatMode" style="display: none;">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2 class="card-title">Scheduling Assistant</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="chatbox">
+                                    <div class="chat-log" id="chatLog">
+                                        Ask a question about schedules, rules, or conflicts. (Tools coming soon.)
+                                    </div>
+                                    <div class="chat-input-row">
+                                        <input class="form-input" id="chatInput" placeholder="Ask a scheduling question..." />
+                                        <button class="btn btn-primary" id="chatSendBtn">Send</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
+
+                <aside class="notifications-panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">Notifications</h2>
+                        </div>
+                        <div class="card-body" id="notificationsPanel">
+                            <div class="loading"><div class="spinner"></div>Loading...</div>
+                        </div>
+                    </div>
+                </aside>
             </div>
 
             <input type="file" id="fileInput" accept=".xlsx" style="display: none;">
@@ -983,6 +1109,91 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                 <h1 class="page-title">Settings</h1>
             </div>
 
+            <!-- Program Rules -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Program Rules</h2>
+                    <button class="btn btn-primary btn-sm" id="saveProgramRulesBtn">Save Rules</button>
+                </div>
+                <div class="card-body">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Max Hours (7 days)</label>
+                            <input type="number" class="form-input" id="ruleMaxHours7d">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Avg Hours / Week</label>
+                            <input type="number" class="form-input" id="ruleAvgHoursWeek">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Min Days Off / Week</label>
+                            <input type="number" step="0.25" class="form-input" id="ruleMinDaysOff">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Night → Day Gap Value</label>
+                            <input type="number" class="form-input" id="ruleNightDayGapValue">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Night → Day Gap Type</label>
+                            <select class="form-select" id="ruleNightDayGapType">
+                                <option value="calendar_day">Calendar Day</option>
+                                <option value="hours">Hours</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Block Length (days)</label>
+                            <input type="number" class="form-input" id="ruleBlockLength">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Rotation Change Day (0=Mon, 5=Sat)</label>
+                            <input type="number" class="form-input" id="ruleRotationChangeDay">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Clinic Interval (weeks)</label>
+                            <input type="number" class="form-input" id="ruleClinicInterval">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Clinic Start Time</label>
+                            <input type="time" class="form-input" id="ruleClinicStart">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Clinic End Time</label>
+                            <input type="time" class="form-input" id="ruleClinicEnd">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Clinic Weekdays Only</label>
+                            <select class="form-select" id="ruleClinicWeekdaysOnly">
+                                <option value="true">Yes</option>
+                                <option value="false">No</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Jeopardy Slots / PGY</label>
+                            <input type="number" class="form-input" id="ruleJeopardyPrimary">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Backup Jeopardy Slots / PGY</label>
+                            <input type="number" class="form-input" id="ruleJeopardyBackup">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Jeopardy Requires Elective</label>
+                            <select class="form-select" id="ruleJeopardyRequiresElective">
+                                <option value="true">Yes</option>
+                                <option value="false">No</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Floor Min Hours / Year</label>
+                            <input type="number" class="form-input" id="ruleFloorMinHours">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Floor Min Weeks / Year</label>
+                            <input type="number" class="form-input" id="ruleFloorMinWeeks">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Admin Users -->
             <div class="card">
                 <div class="card-header">
@@ -1000,6 +1211,28 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                             </tr>
                         </thead>
                         <tbody id="adminsTable">
+                            <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Audit Log -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Audit Log</h2>
+                </div>
+                <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Action</th>
+                                <th>Entity</th>
+                                <th>Details</th>
+                                <th>Time</th>
+                            </tr>
+                        </thead>
+                        <tbody id="auditTableSettings">
                             <tr><td colspan="4" class="loading"><div class="spinner"></div>Loading...</td></tr>
                         </tbody>
                     </table>
@@ -1141,6 +1374,10 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
             window.location.href = '/admin/login';
         });
 
+        $('#refreshBtn').addEventListener('click', async () => {
+            await refreshData();
+        });
+
         // ===== Tab Navigation =====
         $$('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {
@@ -1160,7 +1397,10 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
         async function loadTabData(tab) {
             switch(tab) {
                 case 'dashboard': await loadDashboard(); break;
-                case 'schedule': await loadScheduleGrid(); break;
+                case 'schedule':
+                    await loadScheduleGrid();
+                    await loadNotifications();
+                    break;
                 case 'residents': await loadResidents(); break;
                 case 'swaps': await loadSwaps(); break;
                 case 'days-off': await loadDaysOff(); break;
@@ -1231,6 +1471,93 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                 renderScheduleGrid(container, gridData, parseInt(weeksFilter));
             } catch (e) {
                 container.innerHTML = `<div class="empty-state">Failed to load schedule: ${e.message}</div>`;
+            }
+        }
+
+        // ===== Schedule Modes =====
+        function setScheduleMode(mode) {
+            const calendar = $('#calendarMode');
+            const chat = $('#chatMode');
+            const buttons = $$('#scheduleModeToggle button');
+
+            buttons.forEach(b => b.classList.remove('active'));
+            buttons.forEach(b => {
+                if (b.dataset.mode === mode) b.classList.add('active');
+            });
+
+            if (mode === 'chat') {
+                calendar.style.display = 'none';
+                chat.style.display = 'block';
+            } else {
+                calendar.style.display = 'block';
+                chat.style.display = 'none';
+            }
+        }
+
+        $$('#scheduleModeToggle button').forEach(btn => {
+            btn.addEventListener('click', () => setScheduleMode(btn.dataset.mode));
+        });
+
+        $('#chatSendBtn').addEventListener('click', () => {
+            const input = $('#chatInput');
+            const value = input.value.trim();
+            if (!value) return;
+            const log = $('#chatLog');
+            const item = document.createElement('div');
+            item.style.marginBottom = '0.5rem';
+            item.textContent = `You: ${value}`;
+            log.appendChild(item);
+            input.value = '';
+            log.scrollTop = log.scrollHeight;
+        });
+
+        // ===== Notifications / Refresh =====
+        async function loadNotifications() {
+            const panel = $('#notificationsPanel');
+            panel.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+            try {
+                const data = await api('/api/admin/notifications');
+                const items = [];
+
+                items.push(`
+                    <div class="notification-item">
+                        <div class="notification-title">Pending Swaps</div>
+                        <div class="notification-meta">${data.pending_swaps} pending · ${data.peer_confirmed_swaps} awaiting approval</div>
+                    </div>
+                `);
+
+                if (data.amion_unmatched_names > 0) {
+                    items.push(`
+                        <div class="notification-item warning">
+                            <div class="notification-title">Amion Conflicts</div>
+                            <div class="notification-meta">${data.amion_unmatched_names} unmatched names · Last sync ${data.amion_last_sync_at || 'unknown'}</div>
+                        </div>
+                    `);
+                } else {
+                    items.push(`
+                        <div class="notification-item">
+                            <div class="notification-title">Amion Sync</div>
+                            <div class="notification-meta">No conflicts · Last sync ${data.amion_last_sync_at || 'unknown'}</div>
+                        </div>
+                    `);
+                }
+
+                panel.innerHTML = items.join('');
+            } catch (e) {
+                panel.innerHTML = '<div class="empty-state">Failed to load notifications</div>';
+            }
+        }
+
+        async function refreshData() {
+            try {
+                const result = await api('/api/admin/refresh', { method: 'POST' });
+                if (result.notifications) {
+                    await loadNotifications();
+                }
+                showToast('Data refreshed');
+            } catch (e) {
+                showToast('Refresh failed: ' + e.message, 'error');
             }
         }
 
@@ -2043,7 +2370,13 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
 
         // ===== Settings =====
         async function loadSettings() {
-            await Promise.all([loadAdmins(), loadRotations(), loadDayOffTypes()]);
+            await Promise.all([
+                loadAdmins(),
+                loadRotations(),
+                loadDayOffTypes(),
+                loadProgramRules(),
+                loadAuditLogSettings(),
+            ]);
         }
 
         async function loadAdmins() {
@@ -2087,6 +2420,80 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                         <td>${t.is_system ? 'Yes' : 'No'}</td>
                     </tr>
                 `).join('');
+            } catch (e) {}
+        }
+
+        async function loadProgramRules() {
+            try {
+                const rules = await api('/api/admin/program-rules');
+                $('#ruleMaxHours7d').value = rules.duty_hours_max_7d ?? '';
+                $('#ruleAvgHoursWeek').value = rules.duty_hours_avg_week ?? '';
+                $('#ruleMinDaysOff').value = rules.min_days_off_per_week ?? '';
+                $('#ruleNightDayGapValue').value = rules.night_to_day_gap_value ?? '';
+                $('#ruleNightDayGapType').value = rules.night_to_day_gap_type ?? 'calendar_day';
+                $('#ruleBlockLength').value = rules.block_length_days ?? '';
+                $('#ruleRotationChangeDay').value = rules.rotation_change_day ?? '';
+                $('#ruleClinicInterval').value = rules.clinic_interval_weeks ?? '';
+                $('#ruleClinicStart').value = rules.clinic_start_time ?? '';
+                $('#ruleClinicEnd').value = rules.clinic_end_time ?? '';
+                $('#ruleClinicWeekdaysOnly').value = String(rules.clinic_weekdays_only ?? true);
+                $('#ruleJeopardyPrimary').value = rules.jeopardy_primary_slots_per_pgy ?? '';
+                $('#ruleJeopardyBackup').value = rules.jeopardy_backup_slots_per_pgy ?? '';
+                $('#ruleJeopardyRequiresElective').value = String(rules.jeopardy_requires_elective ?? true);
+                $('#ruleFloorMinHours').value = rules.floor_min_hours_per_year ?? '';
+                $('#ruleFloorMinWeeks').value = rules.floor_min_weeks_per_year ?? '';
+            } catch (e) {
+                showToast('Failed to load program rules', 'error');
+            }
+        }
+
+        $('#saveProgramRulesBtn').addEventListener('click', async () => {
+            const payload = {
+                duty_hours_max_7d: Number($('#ruleMaxHours7d').value),
+                duty_hours_avg_week: Number($('#ruleAvgHoursWeek').value),
+                min_days_off_per_week: Number($('#ruleMinDaysOff').value),
+                night_to_day_gap_value: Number($('#ruleNightDayGapValue').value),
+                night_to_day_gap_type: $('#ruleNightDayGapType').value,
+                block_length_days: Number($('#ruleBlockLength').value),
+                rotation_change_day: Number($('#ruleRotationChangeDay').value),
+                clinic_interval_weeks: Number($('#ruleClinicInterval').value),
+                clinic_start_time: $('#ruleClinicStart').value,
+                clinic_end_time: $('#ruleClinicEnd').value,
+                clinic_weekdays_only: $('#ruleClinicWeekdaysOnly').value === 'true',
+                jeopardy_primary_slots_per_pgy: Number($('#ruleJeopardyPrimary').value),
+                jeopardy_backup_slots_per_pgy: Number($('#ruleJeopardyBackup').value),
+                jeopardy_requires_elective: $('#ruleJeopardyRequiresElective').value === 'true',
+                floor_min_hours_per_year: $('#ruleFloorMinHours').value ? Number($('#ruleFloorMinHours').value) : null,
+                floor_min_weeks_per_year: $('#ruleFloorMinWeeks').value ? Number($('#ruleFloorMinWeeks').value) : null,
+            };
+
+            try {
+                await api('/api/admin/program-rules', {
+                    method: 'PUT',
+                    body: JSON.stringify(payload),
+                });
+                showToast('Program rules saved');
+            } catch (e) {
+                showToast('Failed to save rules: ' + e.message, 'error');
+            }
+        });
+
+        async function loadAuditLogSettings() {
+            try {
+                const audit = await api('/api/admin/audit-log?limit=50');
+                const tbody = $('#auditTableSettings');
+                if (audit.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No recent activity</td></tr>';
+                } else {
+                    tbody.innerHTML = audit.map(log => `
+                        <tr>
+                            <td><span class="badge badge-success">${log.action}</span></td>
+                            <td>${log.entity_type || '-'}</td>
+                            <td>${log.entity_id || '-'}</td>
+                            <td>${formatDateTime(log.created_at)}</td>
+                        </tr>
+                    `).join('');
+                }
             } catch (e) {}
         }
 
