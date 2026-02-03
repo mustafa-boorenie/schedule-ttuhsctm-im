@@ -1,6 +1,7 @@
 """
 SQLAlchemy database models.
 """
+from __future__ import annotations
 from datetime import datetime, date, time
 from typing import Optional, List
 from uuid import uuid4
@@ -46,6 +47,11 @@ class SyncStatus(str, enum.Enum):
     PARTIAL = "partial"
 
 
+class NightToDayGapType(str, enum.Enum):
+    CALENDAR_DAY = "calendar_day"
+    HOURS = "hours"
+
+
 # Models
 class AcademicYear(Base):
     """Academic year (e.g., 2025-2026)."""
@@ -61,6 +67,9 @@ class AcademicYear(Base):
     # Relationships
     residents: Mapped[List["Resident"]] = relationship(back_populates="academic_year")
     schedule_assignments: Mapped[List["ScheduleAssignment"]] = relationship(back_populates="academic_year")
+    program_rules: Mapped[Optional["ProgramRules"]] = relationship(
+        back_populates="academic_year", uselist=False
+    )
 
 
 class Resident(Base):
@@ -352,3 +361,48 @@ class AmionSyncLog(Base):
     errors: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+
+class ProgramRules(Base):
+    """Program-level scheduling rules for an academic year."""
+    __tablename__ = "program_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    academic_year_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("academic_years.id"), nullable=False, unique=True
+    )
+
+    # Duty hours
+    duty_hours_max_7d: Mapped[int] = mapped_column(Integer, default=100)  # max in any 7 days
+    duty_hours_avg_week: Mapped[int] = mapped_column(Integer, default=80)  # average per week
+    min_days_off_per_week: Mapped[float] = mapped_column(default=1.0)  # average days off per week
+
+    # Night -> day transition
+    night_to_day_gap_value: Mapped[int] = mapped_column(Integer, default=1)
+    night_to_day_gap_type: Mapped[NightToDayGapType] = mapped_column(
+        SQLEnum(NightToDayGapType), default=NightToDayGapType.CALENDAR_DAY
+    )
+
+    # Block / rotation timing
+    block_length_days: Mapped[int] = mapped_column(Integer, default=7)
+    rotation_change_day: Mapped[int] = mapped_column(Integer, default=5)  # 0=Mon ... 5=Sat
+
+    # Clinic cadence
+    clinic_interval_weeks: Mapped[int] = mapped_column(Integer, default=5)
+    clinic_start_time: Mapped[time] = mapped_column(Time, default=time(8, 0))
+    clinic_end_time: Mapped[time] = mapped_column(Time, default=time(17, 0))
+    clinic_weekdays_only: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Jeopardy rules
+    jeopardy_primary_slots_per_pgy: Mapped[int] = mapped_column(Integer, default=1)
+    jeopardy_backup_slots_per_pgy: Mapped[int] = mapped_column(Integer, default=1)
+    jeopardy_requires_elective: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    # Floor minimums (configurable; optional)
+    floor_min_hours_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    floor_min_weeks_per_year: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    academic_year: Mapped["AcademicYear"] = relationship(back_populates="program_rules")

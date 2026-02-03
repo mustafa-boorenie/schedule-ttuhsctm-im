@@ -12,6 +12,7 @@ from ..schemas import AdminLoginRequest, MagicLinkVerifyResponse, AdminResponse
 from ..services.auth import AuthService, get_current_admin
 from ..services.email import EmailService
 from ..models import Admin
+from ..settings import settings
 
 router = APIRouter(prefix="/api/admin", tags=["admin-auth"])
 
@@ -55,36 +56,55 @@ async def setup_first_admin(
 
 
 @router.post("/login")
-async def login_with_password(
+async def login(
     request: AdminLoginRequest,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Simple password-based admin login.
-    """
-    ADMIN_PASSWORD = "ttuhsc-im123!"
+    Admin login.
 
+    If ADMIN_PASSWORD is configured, use password auth.
+    Otherwise, send a magic link to the admin's email.
+    """
     auth_service = AuthService(db)
     admin = await auth_service.get_admin_by_email(request.email)
 
     if not admin:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    if request.password != ADMIN_PASSWORD:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    # Optional password auth (if configured and provided)
+    if settings.admin_password and request.password:
+        if request.password != settings.admin_password:
+            raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Create access token
-    token = auth_service.create_access_token(admin)
-
-    return {
-        "message": "Login successful",
-        "token": token,
-        "admin": {
-            "id": admin.id,
-            "email": admin.email,
-            "name": admin.name
+        token = auth_service.create_access_token(admin)
+        return {
+            "message": "Login successful",
+            "token": token,
+            "admin": {
+                "id": admin.id,
+                "email": admin.email,
+                "name": admin.name
+            }
         }
+
+    # Magic link flow
+    magic_link = await auth_service.create_magic_link(admin)
+    await db.commit()
+
+    magic_link_url = auth_service.get_magic_link_url(magic_link.token)
+    email_service = EmailService()
+    sent = await email_service.send_magic_link(admin.email, magic_link_url)
+
+    response = {
+        "message": "Magic link sent. Check your email to log in.",
+        "delivery": "email",
+        "sent": sent,
     }
+    if settings.debug:
+        response["magic_link_url"] = magic_link_url
+
+    return response
 
 
 @router.get("/verify/{token}")
@@ -114,7 +134,7 @@ async def verify_magic_link(
         key="admin_token",
         value=access_token,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=not settings.debug,
         samesite="lax",
         max_age=60 * 60 * 24 * 7,  # 7 days
     )

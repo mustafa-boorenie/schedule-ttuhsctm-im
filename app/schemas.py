@@ -368,6 +368,54 @@ class AuditLogResponse(BaseModel):
         from_attributes = True
 
 
+# Program rules schemas
+class ProgramRulesBase(BaseModel):
+    duty_hours_max_7d: int
+    duty_hours_avg_week: int
+    min_days_off_per_week: float
+    night_to_day_gap_value: int
+    night_to_day_gap_type: str
+    block_length_days: int
+    rotation_change_day: int
+    clinic_interval_weeks: int
+    clinic_start_time: time
+    clinic_end_time: time
+    clinic_weekdays_only: bool
+    jeopardy_primary_slots_per_pgy: int
+    jeopardy_backup_slots_per_pgy: int
+    jeopardy_requires_elective: bool
+    floor_min_hours_per_year: Optional[int] = None
+    floor_min_weeks_per_year: Optional[int] = None
+
+
+class ProgramRulesResponse(ProgramRulesBase):
+    id: int
+    academic_year_id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ProgramRulesUpdate(BaseModel):
+    duty_hours_max_7d: Optional[int] = None
+    duty_hours_avg_week: Optional[int] = None
+    min_days_off_per_week: Optional[float] = None
+    night_to_day_gap_value: Optional[int] = None
+    night_to_day_gap_type: Optional[str] = None
+    block_length_days: Optional[int] = None
+    rotation_change_day: Optional[int] = None
+    clinic_interval_weeks: Optional[int] = None
+    clinic_start_time: Optional[time] = None
+    clinic_end_time: Optional[time] = None
+    clinic_weekdays_only: Optional[bool] = None
+    jeopardy_primary_slots_per_pgy: Optional[int] = None
+    jeopardy_backup_slots_per_pgy: Optional[int] = None
+    jeopardy_requires_elective: Optional[bool] = None
+    floor_min_hours_per_year: Optional[int] = None
+    floor_min_weeks_per_year: Optional[int] = None
+
+
 # Excel upload schemas
 class ExcelUploadResponse(BaseModel):
     status: str
