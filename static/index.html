@@ -565,7 +565,8 @@
             
             // Show result section
             selectedNameEl.textContent = name;
-            const calendarUrl = `${baseUrl}/api/calendar/${encodeURIComponent(name)}.ics`;
+            const webcalUrl = baseUrl.replace(/^https?:\/\//, 'webcal://');
+            const calendarUrl = `${webcalUrl}/api/calendar/${encodeURIComponent(name)}.ics`;
             calendarUrlEl.textContent = calendarUrl;
             resultSection.classList.add('active');
             

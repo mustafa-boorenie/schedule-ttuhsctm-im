@@ -1022,7 +1022,8 @@
             // Set calendar URL
             if (residentEmail) {
                 const baseUrl = window.location.origin;
-                const calUrl = `${baseUrl}/api/calendar/by-email.ics?email=${encodeURIComponent(residentEmail)}`;
+                const webcalUrl = baseUrl.replace(/^https?:\/\//, 'webcal://');
+                const calUrl = `${webcalUrl}/api/calendar/by-email.ics?email=${encodeURIComponent(residentEmail)}`;
                 $('#calendarUrl').textContent = calUrl;
             }
 
