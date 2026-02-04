@@ -666,14 +666,36 @@
         .mt-2 { margin-top: 1rem; }
         .mb-1 { margin-bottom: 0.5rem; }
         .mb-2 { margin-bottom: 1rem; }
+        .error-text { color: var(--error); font-size: 0.875rem; }
     </style>
 </head>
 <body>
+    <!-- Login Screen -->
+    <div id="loginScreen" style="min-height: 100vh; display: none; align-items: center; justify-content: center; padding: 2rem;">
+        <div class="card" style="max-width: 420px; width: 100%;">
+            <h2 style="margin-bottom: 1rem;">Resident Login</h2>
+            <p class="text-muted mb-2">Enter your email to view your schedule.</p>
+            <div class="form-group">
+                <input type="email" class="form-input" id="emailInput" placeholder="name@ttuhsc.edu">
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" id="rememberMe" checked>
+                <label for="rememberMe" class="text-muted">Remember me</label>
+            </div>
+            <div id="loginError" class="error-text mb-1" style="display: none;"></div>
+            <button class="btn btn-primary btn-block" id="loginBtn">Continue</button>
+        </div>
+    </div>
+
+    <div id="appShell">
     <!-- Header -->
     <header class="header">
         <div class="header-content">
             <div class="header-title">Rotation Calendar</div>
-            <div class="header-user" id="residentName">Loading...</div>
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div class="header-user" id="residentName">Loading...</div>
+                <button class="btn btn-secondary btn-sm" id="signOutBtn" style="display: none;">Sign out</button>
+            </div>
         </div>
     </header>
 
@@ -820,6 +842,7 @@
 
     <!-- Toast -->
     <div class="toast" id="toast"></div>
+    </div>
 
     <script>
         // ===== Configuration =====
@@ -829,31 +852,8 @@
 
         // Get email from URL or localStorage
         const urlParams = new URLSearchParams(window.location.search);
-        residentEmail = urlParams.get('email') || localStorage.getItem('resident_email');
-
-        if (!residentEmail) {
-            // Show email input modal
-            document.body.innerHTML = `
-                <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem;">
-                    <div class="card" style="max-width: 400px; width: 100%;">
-                        <h2 style="margin-bottom: 1rem;">Welcome</h2>
-                        <p class="text-muted mb-2">Enter your email to view your schedule.</p>
-                        <div class="form-group">
-                            <input type="email" class="form-input" id="emailInput" placeholder="Enter your email">
-                        </div>
-                        <button class="btn btn-primary btn-block" onclick="submitEmail()">Continue</button>
-                    </div>
-                </div>
-            `;
-        }
-
-        function submitEmail() {
-            const email = document.getElementById('emailInput').value.trim();
-            if (email) {
-                localStorage.setItem('resident_email', email);
-                window.location.href = '?email=' + encodeURIComponent(email);
-            }
-        }
+        const storedEmail = localStorage.getItem('resident_email') || sessionStorage.getItem('resident_email');
+        residentEmail = urlParams.get('email') || storedEmail;
 
         // ===== Utility Functions =====
         const $ = (sel) => document.querySelector(sel);
@@ -890,8 +890,63 @@
         }
 
         $('#modalClose').addEventListener('click', closeModal);
-        $('#modal').addEventListener('click', (e) => {
+            $('#modal').addEventListener('click', (e) => {
             if (e.target === $('#modal')) closeModal();
+        });
+
+        function showLogin(errorMessage) {
+            $('#appShell').style.display = 'none';
+            $('#loginScreen').style.display = 'flex';
+            const errorEl = $('#loginError');
+            if (errorMessage) {
+                errorEl.textContent = errorMessage;
+                errorEl.style.display = 'block';
+            } else {
+                errorEl.textContent = '';
+                errorEl.style.display = 'none';
+            }
+        }
+
+        function showApp() {
+            $('#loginScreen').style.display = 'none';
+            $('#appShell').style.display = 'block';
+        }
+
+        async function handleLogin() {
+            const email = $('#emailInput').value.trim();
+            if (!email) {
+                showLogin('Please enter a valid email.');
+                return;
+            }
+
+            try {
+                const data = await api(`/api/residents/lookup?email=${encodeURIComponent(email)}`);
+                residentEmail = data.email;
+                residentData = data;
+
+                if ($('#rememberMe').checked) {
+                    localStorage.setItem('resident_email', residentEmail);
+                    sessionStorage.removeItem('resident_email');
+                } else {
+                    sessionStorage.setItem('resident_email', residentEmail);
+                    localStorage.removeItem('resident_email');
+                }
+
+                window.location.href = `/resident?email=${encodeURIComponent(residentEmail)}`;
+            } catch (e) {
+                showLogin('We could not find a resident for that email.');
+            }
+        }
+
+        $('#loginBtn').addEventListener('click', handleLogin);
+        $('#emailInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleLogin();
+        });
+
+        $('#signOutBtn').addEventListener('click', () => {
+            localStorage.removeItem('resident_email');
+            sessionStorage.removeItem('resident_email');
+            window.location.href = '/resident';
         });
 
         // ===== Navigation =====
@@ -930,9 +985,10 @@
 
             // Load resident info
             try {
-                const residents = await api('/api/residents');
-                // For now, just show the first resident or use email
-                $('#residentName').textContent = residentData?.name || 'Resident';
+                if (!residentData && residentEmail) {
+                    residentData = await api(`/api/residents/lookup?email=${encodeURIComponent(residentEmail)}`);
+                }
+                $('#residentName').textContent = residentData?.name || residentEmail || 'Resident';
             } catch (e) {}
 
             // Load today's schedule (placeholder - would need resident-specific endpoint)
@@ -1352,7 +1408,11 @@
 
         // ===== Initialize =====
         if (residentEmail) {
+            showApp();
+            $('#signOutBtn').style.display = 'inline-flex';
             loadHome();
+        } else {
+            showLogin();
         }
     </script>
 </body>

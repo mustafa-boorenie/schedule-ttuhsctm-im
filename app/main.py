@@ -181,6 +181,19 @@ async def list_residents(db: AsyncSession = Depends(get_db)):
         return {"residents": []}
 
 
+@app.get("/api/residents/lookup")
+async def lookup_resident_by_email(
+    email: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Lookup a resident by email (exact or fuzzy match)."""
+    try:
+        resident = await get_resident_by_email(db, email)
+        return {"id": resident.id, "name": resident.name, "email": resident.email}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/residents/{resident_id}/schedule")
 async def get_resident_schedule(
     resident_id: int,
