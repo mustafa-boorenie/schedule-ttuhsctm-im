@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..schemas import AdminLoginRequest, MagicLinkVerifyResponse, AdminResponse
 from ..services.auth import AuthService, get_current_admin
-from ..services.email import EmailService
 from ..models import Admin
 from ..settings import settings
 
@@ -63,8 +62,7 @@ async def login(
     """
     Admin login.
 
-    If ADMIN_PASSWORD is configured, use password auth.
-    Otherwise, send a magic link to the admin's email.
+    Uses password auth only. Magic links are disabled.
     """
     auth_service = AuthService(db)
     admin = await auth_service.get_admin_by_email(request.email)
@@ -72,39 +70,25 @@ async def login(
     if not admin:
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
-    # Optional password auth (if configured and provided)
-    if settings.admin_password and request.password:
-        if request.password != settings.admin_password:
-            raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not settings.admin_password:
+        raise HTTPException(
+            status_code=500,
+            detail="ADMIN_PASSWORD not configured"
+        )
 
-        token = auth_service.create_access_token(admin)
-        return {
-            "message": "Login successful",
-            "token": token,
-            "admin": {
-                "id": admin.id,
-                "email": admin.email,
-                "name": admin.name
-            }
+    if request.password != settings.admin_password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = auth_service.create_access_token(admin)
+    return {
+        "message": "Login successful",
+        "token": token,
+        "admin": {
+            "id": admin.id,
+            "email": admin.email,
+            "name": admin.name
         }
-
-    # Magic link flow
-    magic_link = await auth_service.create_magic_link(admin)
-    await db.commit()
-
-    magic_link_url = auth_service.get_magic_link_url(magic_link.token)
-    email_service = EmailService()
-    sent = await email_service.send_magic_link(admin.email, magic_link_url)
-
-    response = {
-        "message": "Magic link sent. Check your email to log in.",
-        "delivery": "email",
-        "sent": sent,
     }
-    if settings.debug:
-        response["magic_link_url"] = magic_link_url
-
-    return response
 
 
 @router.get("/verify/{token}")
