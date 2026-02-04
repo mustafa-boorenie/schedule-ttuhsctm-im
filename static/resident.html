@@ -740,8 +740,9 @@
             <div class="card subscribe-card">
                 <div class="card-title">Subscribe to Calendar</div>
                 <p class="text-muted" style="font-size: 0.875rem;">Add your schedule to Apple Calendar, Google Calendar, or Outlook</p>
-                <div class="subscribe-url" id="calendarUrl">Loading...</div>
-                <button class="btn btn-primary btn-block" id="copyUrlBtn">Copy URL</button>
+                <a href="#" class="btn btn-primary btn-block" id="subscribeBtn" style="margin-bottom: 0.5rem; text-decoration: none; display: block; text-align: center;">Subscribe to Calendar</a>
+                <div class="subscribe-url" id="calendarUrl" style="font-size: 0.75rem;">Loading...</div>
+                <button class="btn btn-secondary btn-block" id="copyUrlBtn" style="font-size: 0.875rem;">Copy URL</button>
             </div>
         </div>
 
@@ -1025,6 +1026,7 @@
                 const webcalUrl = baseUrl.replace(/^https?:\/\//, 'webcal://');
                 const calUrl = `${webcalUrl}/api/calendar/by-email.ics?email=${encodeURIComponent(residentEmail)}`;
                 $('#calendarUrl').textContent = calUrl;
+                $('#subscribeBtn').href = calUrl;
             }
 
             // Load pending swaps count
