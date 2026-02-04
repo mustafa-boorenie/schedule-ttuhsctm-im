@@ -1782,7 +1782,8 @@ Jane Doe,2026-02-01,2026-02-01,Conference,ACEP Conference"></textarea>
                 showToast('Resident email is required to generate a link', 'error');
                 return;
             }
-            const url = `${window.location.origin}/api/calendar/by-email.ics?email=${encodeURIComponent(email)}`;
+            const webcalUrl = window.location.origin.replace(/^https?:\/\//, 'webcal://');
+            const url = `${webcalUrl}/api/calendar/by-email.ics?email=${encodeURIComponent(email)}`;
             navigator.clipboard.writeText(url);
             showToast('Calendar link copied!');
         }
