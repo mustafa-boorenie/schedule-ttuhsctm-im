@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
+from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +31,7 @@ from .services.excel_import import ExcelImportService, seed_default_day_off_type
 from .services.program_rules import ensure_rules_for_current_year
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
-from .services.resident_lookup import get_resident_by_email
+from .services.resident_lookup import extract_email_local, find_best_match, get_resident_by_email
 from .settings import settings
 
 # Legacy imports for backward compatibility
@@ -212,29 +213,6 @@ async def get_resident_schedule(
 
     return {"assignments": assignments}
 
-
-@app.get("/api/calendar/{calendar_token}.ics")
-async def get_calendar_by_token(
-    calendar_token: str,
-    include_rotations: bool = True,
-    include_call: bool = True,
-    include_days_off: bool = True,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Generate and return an ICS calendar file for a resident by their calendar token.
-
-    Query parameters:
-    - include_rotations: Include rotation schedule events (default: true)
-    - include_call: Include call status events (default: true)
-    - include_days_off: Include days off events (default: true)
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="Calendar token access is deprecated. Use /api/calendar/by-email?email=... instead.",
-    )
-
-
 @app.get("/api/calendar/by-email.ics")
 async def get_calendar_by_email(
     email: str,
@@ -244,8 +222,23 @@ async def get_calendar_by_email(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate and return an ICS calendar file for a resident by email."""
+    email_clean = email.strip().lower()
+
+    async def _legacy_email_fallback() -> Response:
+        # Fall back to the schedule.xlsx-based calendar if DB-backed generation isn't possible.
+        parser = get_parser(SCHEDULE_PATH)
+        resident_names = parser.get_residents()
+        matched_name = find_best_match(extract_email_local(email_clean), resident_names)
+        if not matched_name:
+            raise HTTPException(status_code=404, detail="No resident matched this email")
+        return await get_calendar_legacy(matched_name)
+
     try:
-        resident = await get_resident_by_email(db, email)
+        resident = await get_resident_by_email(db, email_clean)
+    except ValueError:
+        return await _legacy_email_fallback()
+
+    try:
         ics_content, resident_name = await generate_resident_calendar_by_token(
             db=db,
             calendar_token=resident.calendar_token,
@@ -261,10 +254,106 @@ async def get_calendar_by_email(
                 "Cache-Control": "no-cache, no-store, must-revalidate",
             },
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating calendar: {str(e)}")
+    except Exception:
+        # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
+        return await _legacy_email_fallback()
+
+
+@app.get("/api/calendar/{calendar_token}.ics")
+async def get_calendar_by_token(
+    calendar_token: str,
+    include_rotations: bool = True,
+    include_call: bool = True,
+    include_days_off: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate and return an ICS calendar file.
+
+    Supported identifiers:
+    - Resident calendar token (preferred for privacy)
+    - Resident email (URL-encoded; e.g. mbooreni%40ttuhsc.edu)
+    - Legacy resident name (falls back to schedule.xlsx parsing)
+
+    Query parameters:
+    - include_rotations: Include rotation schedule events (default: true)
+    - include_call: Include call status events (default: true)
+    - include_days_off: Include days off events (default: true)
+    """
+    identifier = calendar_token.strip()
+
+    async def _legacy_email_fallback(email_addr: str) -> Response:
+        parser = get_parser(SCHEDULE_PATH)
+        resident_names = parser.get_residents()
+        matched_name = find_best_match(extract_email_local(email_addr), resident_names)
+        if not matched_name:
+            raise HTTPException(status_code=404, detail="No resident matched this email")
+        return await get_calendar_legacy(matched_name)
+
+    # Email in path
+    if "@" in identifier:
+        email_clean = identifier.lower()
+        try:
+            resident = await get_resident_by_email(db, email_clean)
+            ics_content, resident_name = await generate_resident_calendar_by_token(
+                db=db,
+                calendar_token=resident.calendar_token,
+                include_rotations=include_rotations,
+                include_call=include_call,
+                include_days_off=include_days_off,
+            )
+            return Response(
+                content=ics_content,
+                media_type="text/calendar",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+        except ValueError:
+            return await _legacy_email_fallback(email_clean)
+        except Exception:
+            # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
+            return await _legacy_email_fallback(email_clean)
+
+    # If it's not a UUID, treat it as a legacy resident name (schedule.xlsx).
+    try:
+        UUID(identifier)
+    except Exception:
+        return await get_calendar_legacy(identifier)
+
+    # UUID token path
+    try:
+        ics_content, resident_name = await generate_resident_calendar_by_token(
+            db=db,
+            calendar_token=identifier,
+            include_rotations=include_rotations,
+            include_call=include_call,
+            include_days_off=include_days_off,
+        )
+        return Response(
+            content=ics_content,
+            media_type="text/calendar",
+            headers={
+                "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
+        )
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Invalid calendar token")
+    except Exception:
+        # If DB-backed generation fails (e.g. pending migrations), try to map token -> resident name -> legacy calendar.
+        try:
+            result = await db.execute(select(Resident).where(Resident.calendar_token == identifier))
+            resident = result.scalar_one_or_none()
+            if resident:
+                parser = get_parser(SCHEDULE_PATH)
+                resident_names = parser.get_residents()
+                matched_name = find_best_match(resident.name, resident_names) or resident.name
+                return await get_calendar_legacy(matched_name)
+        except Exception:
+            pass
+        raise
 
 
 async def get_calendar_legacy(resident_name: str):
