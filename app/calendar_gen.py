@@ -5,10 +5,13 @@ Creates iCal files with proper event times based on rotation rules.
 from datetime import date, datetime, timedelta
 from typing import Iterator
 from icalendar import Calendar, Event
-from uuid import uuid4
 
 from .config import get_rotation_times, RotationTimes
 from .parser import get_parser
+
+
+def _slug(value: str) -> str:
+    return "".join(ch.lower() for ch in value.strip() if ch.isalnum()) or "unknown"
 
 
 def generate_calendar(resident_name: str) -> Calendar:
@@ -42,13 +45,14 @@ def generate_calendar(resident_name: str) -> Calendar:
             continue
         
         # Generate individual day events for this week
-        for event in generate_week_events(rotation, week_start, week_end, rotation_times):
+        for event in generate_week_events(resident_name, rotation, week_start, week_end, rotation_times):
             cal.add_component(event)
     
     return cal
 
 
 def generate_week_events(
+    resident_name: str,
     rotation: str,
     week_start: date,
     week_end: date,
@@ -78,7 +82,8 @@ def generate_week_events(
         event = Event()
         
         # Generate unique ID
-        uid = f"{uuid4()}@rotation-calendar"
+        # Stable UID is important for subscribed calendars (prevents duplicates on refresh).
+        uid = f"rotation-{_slug(resident_name)}-{current_date.isoformat()}@rotation-calendar"
         event.add("uid", uid)
         
         # Event summary (title)
@@ -124,4 +129,3 @@ def generate_resident_ics(resident_name: str) -> bytes:
     """
     cal = generate_calendar(resident_name)
     return calendar_to_ics(cal)
-

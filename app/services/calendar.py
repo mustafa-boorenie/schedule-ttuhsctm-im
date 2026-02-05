@@ -10,8 +10,6 @@ Features:
 """
 from datetime import date, datetime, timedelta, time
 from typing import Optional, List, Tuple
-from uuid import uuid4
-
 from icalendar import Calendar, Event, vDuration
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,6 +174,7 @@ class CalendarService:
 
             # Generate events for each day of the rotation
             week_events = self._create_rotation_week_events(
+                resident_id=resident_id,
                 rotation=rotation,
                 week_start=assignment.week_start,
                 week_end=assignment.week_end,
@@ -187,6 +186,7 @@ class CalendarService:
 
     def _create_rotation_week_events(
         self,
+        resident_id: int,
         rotation: Rotation,
         week_start: date,
         week_end: date,
@@ -214,7 +214,8 @@ class CalendarService:
                 continue
 
             event = Event()
-            event.add("uid", f"{uuid4()}@rotation-calendar")
+            # Stable UID is important for subscribed calendars (prevents duplicates on refresh).
+            event.add("uid", f"rotation-{resident_id}-{current_date.isoformat()}@rotation-calendar")
             event.add("summary", rotation.name)
 
             # Calculate times
@@ -276,7 +277,8 @@ class CalendarService:
             config = CALL_CONFIG.get(assignment.call_type, CALL_CONFIG["on-call"])
 
             event = Event()
-            event.add("uid", f"call-{assignment.id}-{uuid4()}@rotation-calendar")
+            # Stable UID is important for subscribed calendars (prevents duplicates on refresh).
+            event.add("uid", f"call-{assignment.id}@rotation-calendar")
 
             # Summary with emoji for visibility
             summary = f"{config['emoji']} {config['display']}"
@@ -356,7 +358,8 @@ class CalendarService:
 
         for day_off, day_off_type in days_off:
             event = Event()
-            event.add("uid", f"dayoff-{day_off.id}-{uuid4()}@rotation-calendar")
+            # Stable UID is important for subscribed calendars (prevents duplicates on refresh).
+            event.add("uid", f"dayoff-{day_off.id}@rotation-calendar")
 
             # Summary with type
             summary = f"🏖️ {day_off_type.name}"
