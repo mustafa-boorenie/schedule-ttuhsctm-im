@@ -95,3 +95,45 @@ async def get_resident_by_email(
             return candidate
 
     raise ValueError("Matched resident not found")
+
+
+async def get_resident_by_name(
+    db: AsyncSession,
+    name: str,
+    *,
+    min_ratio: float = 0.75,
+    min_delta: float = 0.05,
+) -> Resident:
+    name_clean = name.strip()
+    if not name_clean:
+        raise ValueError("Invalid resident name")
+
+    result = await db.execute(
+        select(Resident).where(
+            Resident.is_active == True,
+            func.lower(Resident.name) == name_clean.lower(),
+        )
+    )
+    resident = result.scalar_one_or_none()
+    if resident:
+        return resident
+
+    result = await db.execute(select(Resident).where(Resident.is_active == True))
+    residents = result.scalars().all()
+    if not residents:
+        raise ValueError("No active residents found")
+
+    matched_name = find_best_match(
+        name_clean,
+        [r.name for r in residents],
+        min_ratio=min_ratio,
+        min_delta=min_delta,
+    )
+    if not matched_name:
+        raise ValueError("No resident matched this name")
+
+    for candidate in residents:
+        if candidate.name == matched_name:
+            return candidate
+
+    raise ValueError("Matched resident not found")

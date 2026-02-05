@@ -31,7 +31,12 @@ from .services.excel_import import ExcelImportService, seed_default_day_off_type
 from .services.program_rules import ensure_rules_for_current_year
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
-from .services.resident_lookup import extract_email_local, find_best_match, get_resident_by_email
+from .services.resident_lookup import (
+    extract_email_local,
+    find_best_match,
+    get_resident_by_email,
+    get_resident_by_name,
+)
 from .settings import settings
 
 # Legacy imports for backward compatibility
@@ -316,11 +321,31 @@ async def get_calendar_by_token(
             # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
             return await _legacy_email_fallback(email_clean)
 
-    # If it's not a UUID, treat it as a legacy resident name (schedule.xlsx).
+    # If it's not a UUID, treat it as a resident name.
     try:
         UUID(identifier)
     except Exception:
-        return await get_calendar_legacy(identifier)
+        try:
+            resident = await get_resident_by_name(db, identifier)
+            ics_content, resident_name = await generate_resident_calendar_by_token(
+                db=db,
+                calendar_token=resident.calendar_token,
+                include_rotations=include_rotations,
+                include_call=include_call,
+                include_days_off=include_days_off,
+            )
+            return Response(
+                content=ics_content,
+                media_type="text/calendar",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                },
+            )
+        except ValueError:
+            return await get_calendar_legacy(identifier)
+        except Exception:
+            return await get_calendar_legacy(identifier)
 
     # UUID token path
     try:
