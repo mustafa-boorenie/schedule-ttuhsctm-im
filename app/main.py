@@ -263,6 +263,29 @@ async def get_calendar_by_email(
         # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
         return await _legacy_email_fallback()
 
+@app.head("/api/calendar/by-email.ics")
+async def head_calendar_by_email(
+    email: str,
+    include_rotations: bool = True,
+    include_call: bool = True,
+    include_days_off: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """HEAD support for Apple Calendar subscription validation."""
+    resp = await get_calendar_by_email(
+        email=email,
+        include_rotations=include_rotations,
+        include_call=include_call,
+        include_days_off=include_days_off,
+        db=db,
+    )
+    return Response(
+        content=b"",
+        status_code=resp.status_code,
+        media_type=resp.media_type,
+        headers=dict(resp.headers),
+    )
+
 
 @app.get("/api/calendar/{calendar_token}.ics")
 async def get_calendar_by_token(
@@ -379,6 +402,29 @@ async def get_calendar_by_token(
         except Exception:
             pass
         raise
+
+@app.head("/api/calendar/{calendar_token}.ics")
+async def head_calendar_by_token(
+    calendar_token: str,
+    include_rotations: bool = True,
+    include_call: bool = True,
+    include_days_off: bool = True,
+    db: AsyncSession = Depends(get_db),
+):
+    """HEAD support for Apple Calendar subscription validation."""
+    resp = await get_calendar_by_token(
+        calendar_token=calendar_token,
+        include_rotations=include_rotations,
+        include_call=include_call,
+        include_days_off=include_days_off,
+        db=db,
+    )
+    return Response(
+        content=b"",
+        status_code=resp.status_code,
+        media_type=resp.media_type,
+        headers=dict(resp.headers),
+    )
 
 
 async def get_calendar_legacy(resident_name: str):

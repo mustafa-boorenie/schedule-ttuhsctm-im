@@ -43,3 +43,7 @@ async def test_calendar_by_name_legacy_fallback_returns_ics():
         assert resp.status_code == 200
         assert "text/calendar" in resp.headers.get("content-type", "")
         assert resp.text.startswith("BEGIN:VCALENDAR")
+
+        head = await client.head("/api/calendar/M.%20Boorenie.ics")
+        assert head.status_code == 200
+        assert "text/calendar" in head.headers.get("content-type", "")
