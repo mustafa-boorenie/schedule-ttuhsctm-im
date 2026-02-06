@@ -27,21 +27,18 @@ from .middleware import (
 )
 from .models import Resident, Rotation, ScheduleAssignment, AcademicYear, Admin
 from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router, resident_auth_router
+from .routers.admin_auth import require_admin
 from .services.excel_import import ExcelImportService, seed_default_day_off_types
 from .services.program_rules import ensure_rules_for_current_year
 from .services.scheduler import scheduler
 from .services.calendar import generate_resident_calendar_by_token
+from .services.validation import ValidationError, as_validation_response
 from .services.resident_lookup import (
-    extract_email_local,
-    find_best_match,
     get_resident_by_email,
     get_resident_by_name,
 )
 from .settings import settings
-
-# Legacy imports for backward compatibility
-from .parser import get_parser, reload_parser
-from .calendar_gen import generate_resident_ics
+import json
 
 # Setup logging
 setup_logging()
@@ -49,7 +46,6 @@ logger = logging.getLogger(__name__)
 
 # Get the project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
-SCHEDULE_PATH = PROJECT_ROOT / "schedule.xlsx"
 
 
 @asynccontextmanager
@@ -72,18 +68,25 @@ async def lifespan(app: FastAPI):
 
     # Seed default data
     async for db in get_db():
+        # Ensure current academic year exists
+        result = await db.execute(select(AcademicYear).where(AcademicYear.is_current == True))
+        academic_year = result.scalar_one_or_none()
+        if not academic_year:
+            start_date = date(settings.schedule_start_year, settings.schedule_start_month, settings.schedule_start_day)
+            end_date = start_date.replace(year=start_date.year + 1) - timedelta(days=1)
+            academic_year = AcademicYear(
+                name=f"{start_date.year}-{start_date.year + 1}",
+                start_date=start_date,
+                end_date=end_date,
+                is_current=True,
+            )
+            db.add(academic_year)
+
         await seed_default_day_off_types(db)
         await ensure_rules_for_current_year(db)
         await db.commit()
         break
     logger.info("Database initialized successfully")
-
-    # Legacy: Initialize parser if schedule file exists
-    if SCHEDULE_PATH.exists():
-        get_parser(SCHEDULE_PATH)
-        logger.info(f"Loaded legacy schedule from {SCHEDULE_PATH}")
-    else:
-        logger.info(f"No legacy schedule file at {SCHEDULE_PATH}")
 
     # Start background scheduler for automated tasks (avoid multi-worker duplication)
     if _should_start_scheduler():
@@ -161,30 +164,14 @@ def _should_start_scheduler() -> bool:
 
 @app.get("/api/residents")
 async def list_residents(db: AsyncSession = Depends(get_db)):
-    """Get list of all resident names for the search dropdown."""
-    # Try database first
+    """Get list of all resident names for the search dropdown (DB is sole source)."""
     result = await db.execute(
         select(Resident)
         .where(Resident.is_active == True)
         .order_by(Resident.name)
     )
     residents = result.scalars().all()
-
-    if residents:
-        return {"residents": [r.name for r in residents]}
-
-    # Fallback to legacy Excel parser
-    try:
-        if SCHEDULE_PATH.exists():
-            parser = get_parser(SCHEDULE_PATH)
-            resident_names = parser.get_residents()
-            return {"residents": sorted(resident_names)}
-        else:
-            # No data available yet - return empty list
-            return {"residents": []}
-    except Exception as e:
-        logger.warning(f"Could not load residents: {e}")
-        return {"residents": []}
+    return {"residents": [r.name for r in residents]}
 
 
 @app.get("/api/residents/lookup")
@@ -207,16 +194,38 @@ async def get_resident_schedule(
 ):
     """Get schedule for a specific resident by ID."""
     result = await db.execute(
-        select(ScheduleAssignment)
+        select(ScheduleAssignment, Rotation)
+        .join(Rotation, ScheduleAssignment.rotation_id == Rotation.id, isouter=True)
         .where(ScheduleAssignment.resident_id == resident_id)
         .order_by(ScheduleAssignment.week_start)
     )
-    assignments = result.scalars().all()
+    assignments = result.all()
 
     if not assignments:
         raise HTTPException(status_code=404, detail="No schedule found for this resident")
 
-    return {"assignments": assignments}
+    return {
+        "assignments": [
+            {
+                "id": assignment.id,
+                "resident_id": assignment.resident_id,
+                "rotation_id": assignment.rotation_id,
+                "rotation_name": rotation.name if rotation else None,
+                "rotation_display_name": (
+                    rotation.display_name or rotation.name
+                    if rotation else None
+                ),
+                "rotation_color": rotation.color if rotation else None,
+                "week_start": assignment.week_start.isoformat(),
+                "week_end": assignment.week_end.isoformat(),
+                "academic_year_id": assignment.academic_year_id,
+                "source": assignment.source.value if assignment.source else None,
+                "created_at": assignment.created_at.isoformat() if assignment.created_at else None,
+                "updated_at": assignment.updated_at.isoformat() if assignment.updated_at else None,
+            }
+            for assignment, rotation in assignments
+        ]
+    }
 
 @app.get("/api/calendar/by-email.ics")
 async def get_calendar_by_email(
@@ -226,42 +235,28 @@ async def get_calendar_by_email(
     include_days_off: bool = True,
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate and return an ICS calendar file for a resident by email."""
+    """Generate and return an ICS calendar file for a resident by email (DB-only)."""
     email_clean = email.strip().lower()
-
-    async def _legacy_email_fallback() -> Response:
-        # Fall back to the schedule.xlsx-based calendar if DB-backed generation isn't possible.
-        parser = get_parser(SCHEDULE_PATH)
-        resident_names = parser.get_residents()
-        matched_name = find_best_match(extract_email_local(email_clean), resident_names)
-        if not matched_name:
-            raise HTTPException(status_code=404, detail="No resident matched this email")
-        return await get_calendar_legacy(matched_name)
-
     try:
         resident = await get_resident_by_email(db, email_clean)
-    except ValueError:
-        return await _legacy_email_fallback()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    try:
-        ics_content, resident_name = await generate_resident_calendar_by_token(
-            db=db,
-            calendar_token=resident.calendar_token,
-            include_rotations=include_rotations,
-            include_call=include_call,
-            include_days_off=include_days_off,
-        )
-        return Response(
-            content=ics_content,
-            media_type="text/calendar",
-            headers={
-                "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-            },
-        )
-    except Exception:
-        # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
-        return await _legacy_email_fallback()
+    ics_content, resident_name = await generate_resident_calendar_by_token(
+        db=db,
+        calendar_token=resident.calendar_token,
+        include_rotations=include_rotations,
+        include_call=include_call,
+        include_days_off=include_days_off,
+    )
+    return Response(
+        content=ics_content,
+        media_type="text/calendar",
+        headers={
+            "Content-Disposition": f'attachment; filename=\"{quote(resident_name)}_schedule.ics\"',
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
 
 @app.head("/api/calendar/by-email.ics")
 async def head_calendar_by_email(
@@ -301,8 +296,6 @@ async def get_calendar_by_token(
     Supported identifiers:
     - Resident calendar token (preferred for privacy)
     - Resident email (URL-encoded; e.g. mbooreni%40ttuhsc.edu)
-    - Legacy resident name (falls back to schedule.xlsx parsing)
-
     Query parameters:
     - include_rotations: Include rotation schedule events (default: true)
     - include_call: Include call status events (default: true)
@@ -310,39 +303,28 @@ async def get_calendar_by_token(
     """
     identifier = calendar_token.strip()
 
-    async def _legacy_email_fallback(email_addr: str) -> Response:
-        parser = get_parser(SCHEDULE_PATH)
-        resident_names = parser.get_residents()
-        matched_name = find_best_match(extract_email_local(email_addr), resident_names)
-        if not matched_name:
-            raise HTTPException(status_code=404, detail="No resident matched this email")
-        return await get_calendar_legacy(matched_name)
-
     # Email in path
     if "@" in identifier:
         email_clean = identifier.lower()
         try:
             resident = await get_resident_by_email(db, email_clean)
-            ics_content, resident_name = await generate_resident_calendar_by_token(
-                db=db,
-                calendar_token=resident.calendar_token,
-                include_rotations=include_rotations,
-                include_call=include_call,
-                include_days_off=include_days_off,
-            )
-            return Response(
-                content=ics_content,
-                media_type="text/calendar",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                },
-            )
-        except ValueError:
-            return await _legacy_email_fallback(email_clean)
-        except Exception:
-            # If DB-backed generation fails (e.g. pending migrations), still serve the legacy rotation calendar.
-            return await _legacy_email_fallback(email_clean)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        ics_content, resident_name = await generate_resident_calendar_by_token(
+            db=db,
+            calendar_token=resident.calendar_token,
+            include_rotations=include_rotations,
+            include_call=include_call,
+            include_days_off=include_days_off,
+        )
+        return Response(
+            content=ics_content,
+            media_type="text/calendar",
+            headers={
+                "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
+        )
 
     # If it's not a UUID, treat it as a resident name.
     try:
@@ -350,25 +332,23 @@ async def get_calendar_by_token(
     except Exception:
         try:
             resident = await get_resident_by_name(db, identifier)
-            ics_content, resident_name = await generate_resident_calendar_by_token(
-                db=db,
-                calendar_token=resident.calendar_token,
-                include_rotations=include_rotations,
-                include_call=include_call,
-                include_days_off=include_days_off,
-            )
-            return Response(
-                content=ics_content,
-                media_type="text/calendar",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                },
-            )
-        except ValueError:
-            return await get_calendar_legacy(identifier)
-        except Exception:
-            return await get_calendar_legacy(identifier)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        ics_content, resident_name = await generate_resident_calendar_by_token(
+            db=db,
+            calendar_token=resident.calendar_token,
+            include_rotations=include_rotations,
+            include_call=include_call,
+            include_days_off=include_days_off,
+        )
+        return Response(
+            content=ics_content,
+            media_type="text/calendar",
+            headers={
+                "Content-Disposition": f'attachment; filename="{quote(resident_name)}_schedule.ics"',
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+            },
+        )
 
     # UUID token path
     try:
@@ -390,17 +370,6 @@ async def get_calendar_by_token(
     except ValueError:
         raise HTTPException(status_code=404, detail="Invalid calendar token")
     except Exception:
-        # If DB-backed generation fails (e.g. pending migrations), try to map token -> resident name -> legacy calendar.
-        try:
-            result = await db.execute(select(Resident).where(Resident.calendar_token == identifier))
-            resident = result.scalar_one_or_none()
-            if resident:
-                parser = get_parser(SCHEDULE_PATH)
-                resident_names = parser.get_residents()
-                matched_name = find_best_match(resident.name, resident_names) or resident.name
-                return await get_calendar_legacy(matched_name)
-        except Exception:
-            pass
         raise
 
 @app.head("/api/calendar/{calendar_token}.ics")
@@ -425,31 +394,6 @@ async def head_calendar_by_token(
         media_type=resp.media_type,
         headers=dict(resp.headers),
     )
-
-
-async def get_calendar_legacy(resident_name: str):
-    """Legacy calendar generation by name."""
-    try:
-        parser = get_parser(SCHEDULE_PATH)
-        residents = parser.get_residents()
-
-        if resident_name not in residents:
-            raise HTTPException(status_code=404, detail=f"Resident '{resident_name}' not found")
-
-        ics_content = generate_resident_ics(resident_name)
-
-        return Response(
-            content=ics_content,
-            media_type="text/calendar",
-            headers={
-                "Content-Disposition": f'attachment; filename="{quote(resident_name)}_rotation.ics"',
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-            }
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error generating calendar: {str(e)}")
 
 
 @app.get("/api/health")
@@ -630,21 +574,10 @@ async def get_call_schedule_week(
     }
 
 
-@app.post("/api/reload")
-async def reload_schedule():
-    """Reload the schedule from the XLSX file (legacy endpoint)."""
-    try:
-        reload_parser(SCHEDULE_PATH)
-        parser = get_parser(SCHEDULE_PATH)
-        count = len(parser.get_residents())
-        return {"status": "reloaded", "resident_count": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reloading schedule: {str(e)}")
-
-
 @app.post("/api/admin/schedule/import")
 async def import_excel_schedule(
     file: UploadFile = File(...),
+    admin: Admin = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -652,8 +585,6 @@ async def import_excel_schedule(
 
     This endpoint requires admin authentication (handled by middleware).
     """
-    # TODO: Add proper admin auth check
-
     # Save uploaded file temporarily
     import tempfile
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
@@ -666,6 +597,13 @@ async def import_excel_schedule(
         result = await import_service.import_excel(tmp_path)
         await db.commit()
         return result
+    except ValidationError as ve:
+        await db.rollback()
+        return Response(
+            content=json.dumps(as_validation_response(ve)),
+            media_type="application/json",
+            status_code=400,
+        )
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Error importing schedule: {str(e)}")
@@ -1273,6 +1211,14 @@ def get_admin_portal_html() -> str:
                     body: formData
                 });
                 const result = await response.json();
+                if (response.status === 400 && result.status === 'validation_failed') {
+                    alert(`Import blocked: ${result.context}\\n` + result.violations.map(v => `${v.message} (${v.span.start} - ${v.span.end})`).join('\\n'));
+                    return;
+                }
+                if (!response.ok) {
+                    alert('Failed to import schedule');
+                    return;
+                }
                 alert(`Import complete: ${result.residents_processed} residents, ${result.assignments_created} assignments`);
                 loadTabData('dashboard');
             } catch (e) {
@@ -1410,7 +1356,17 @@ def get_admin_portal_html() -> str:
         // Action functions
         async function approveSwap(id) {
             if (!confirm('Approve this swap?')) return;
-            await fetch(`/api/admin/swaps/${id}/approve`, { method: 'POST' });
+            const resp = await fetch(`/api/admin/swaps/${id}/approve`, { method: 'POST' });
+            const data = await resp.json();
+            const validation = data.status === 'validation_failed' ? data : data.detail;
+            if (resp.status === 400 && validation && validation.status === 'validation_failed') {
+                alert(`Swap blocked: ${validation.context}\\n` + validation.violations.map(v => `${v.message}`).join('\\n'));
+                return;
+            }
+            if (!resp.ok) {
+                alert('Failed to approve swap');
+                return;
+            }
             loadSwaps();
         }
 

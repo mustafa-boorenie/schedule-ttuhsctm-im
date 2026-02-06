@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: residency-rotation-calendar
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /api/health/ready
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: residency-calendar-db
+          property: connectionString
+      - key: BASE_URL
+        value: https://YOUR_RENDER_URL
+      - key: SECRET_KEY
+        value: change-me
+      - key: SCHEDULER_ENABLED
+        value: "false"
+      - key: CORS_ORIGINS
+        value: https://YOUR_RENDER_URL
+      - key: DEBUG
+        value: "false"
+databases:
+  - name: residency-calendar-db
+    plan: free

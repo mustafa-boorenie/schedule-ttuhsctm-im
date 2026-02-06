@@ -18,6 +18,7 @@ from ..models import (
     PGYLevel, DataSource
 )
 from ..services.excel_import import ExcelImportService
+from ..services.validation import validate_residents_schedule, ValidationError, as_validation_response
 from .admin_auth import require_admin
 
 router = APIRouter(prefix="/api/admin/schedule", tags=["schedule"])
@@ -180,6 +181,7 @@ async def update_schedule_cell(
         # Delete assignment
         if assignment:
             await db.delete(assignment)
+            await db.flush()
 
             # Audit log
             audit = AuditLog(
@@ -191,6 +193,11 @@ async def update_schedule_cell(
                 new_value=None,
             )
             db.add(audit)
+
+        try:
+            await validate_residents_schedule(db, [resident_id], context="grid_update")
+        except ValidationError as ve:
+            raise HTTPException(status_code=400, detail=as_validation_response(ve))
 
         return {"status": "deleted"}
 
@@ -246,6 +253,12 @@ async def update_schedule_cell(
             new_value={"rotation_id": rotation_id, "resident_id": resident_id},
         )
         db.add(audit)
+
+    await db.flush()
+    try:
+        await validate_residents_schedule(db, [resident_id], context="grid_update")
+    except ValidationError as ve:
+        raise HTTPException(status_code=400, detail=as_validation_response(ve))
 
     return {
         "status": "updated",
@@ -348,6 +361,9 @@ async def upload_schedule_excel(
                 "imported": True,
                 **result,
             }
+    except ValidationError as ve:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=as_validation_response(ve))
     except Exception as e:
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")

@@ -5,6 +5,7 @@ from typing import List, Optional
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -29,6 +30,7 @@ from ..schemas import (
 )
 from ..services.program_rules import get_or_create_rules
 from ..services.amion_scraper import run_amion_sync
+from ..services.validation import ValidationError, as_validation_response, validate_residents_schedule
 from .admin_auth import require_admin
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -450,6 +452,18 @@ async def approve_swap(
 
     swap.requester_assignment.rotation_id = target_rotation_id
     swap.target_assignment.rotation_id = requester_rotation_id
+
+    try:
+        await validate_residents_schedule(
+            db,
+            [swap.requester_id, swap.target_id],
+            context="swap_approve",
+        )
+    except ValidationError as ve:
+        # revert changes in memory
+        swap.requester_assignment.rotation_id = requester_rotation_id
+        swap.target_assignment.rotation_id = target_rotation_id
+        return JSONResponse(status_code=400, content=as_validation_response(ve))
 
     # Update swap status
     swap.status = SwapStatus.APPROVED

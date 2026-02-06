@@ -7,6 +7,7 @@ from typing import List, Optional
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
@@ -14,6 +15,7 @@ from pydantic import BaseModel
 from ..database import get_db
 from ..models import Admin, Resident, SwapRequest, SwapStatus, ScheduleAssignment, Rotation
 from ..services.swap import SwapService
+from ..services.validation import ValidationError, as_validation_response
 from ..services.resident_lookup import get_resident_by_email
 from .admin_auth import require_admin
 
@@ -308,6 +310,8 @@ async def admin_approve_swap(
             "swap_id": swap.id,
             "message": "Swap approved and schedule updated",
         }
+    except ValidationError as ve:
+        return JSONResponse(status_code=400, content=as_validation_response(ve))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

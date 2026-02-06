@@ -14,6 +14,7 @@ from ..models import (
     DayOffType, PGYLevel, DataSource
 )
 from ..settings import settings
+from .validation import validate_residents_schedule, ValidationError
 
 
 class ExcelImportService:
@@ -95,6 +96,7 @@ class ExcelImportService:
             "assignments_updated": 0,
             "errors": [],
         }
+        touched_residents = set()
 
         # Find resident rows (skip header rows)
         current_pgy = pgy_level_hint
@@ -123,6 +125,7 @@ class ExcelImportService:
             # Get or create resident
             resident = await self._get_or_create_resident(name, pgy_level, academic_year_id)
             results["residents_processed"] += 1
+            touched_residents.add(resident.id)
 
             # Process schedule assignments for this resident
             for week_col, (week_start, week_end) in week_dates.items():
@@ -157,6 +160,10 @@ class ExcelImportService:
                     results["assignments_created"] += 1
                 else:
                     results["assignments_updated"] += 1
+
+        # Run validation (hard block) on all touched residents
+        await self.db.flush()
+        await validate_residents_schedule(self.db, touched_residents, context="excel_import")
 
         return results
 

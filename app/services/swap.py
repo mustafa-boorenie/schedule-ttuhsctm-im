@@ -21,6 +21,7 @@ from ..models import (
     Resident, SwapRequest, SwapStatus, ScheduleAssignment,
     Rotation, AuditLog, PGYLevel
 )
+from .validation import validate_residents_schedule, ValidationError
 
 
 # PGY Level swap compatibility rules
@@ -248,8 +249,22 @@ class SwapService:
         if swap.status != SwapStatus.PEER_CONFIRMED:
             raise ValueError(f"Cannot approve swap in {swap.status.value} status. Must be peer_confirmed.")
 
-        # Perform the actual schedule swap
+        # Perform the actual schedule swap (keep originals to allow rollback on validation failure)
+        original = await self._capture_assignments(swap)
         await self._execute_swap(swap)
+        await self.db.flush()
+
+        # Validate both residents after swap
+        try:
+            await validate_residents_schedule(
+                self.db,
+                [swap.requester_id, swap.target_id],
+                context="swap_approve",
+            )
+        except ValidationError:
+            # Revert rotations to original state before propagating error
+            await self._restore_assignments(original)
+            raise
 
         # Update swap status
         swap.status = SwapStatus.APPROVED
@@ -340,6 +355,27 @@ class SwapService:
 
         req_assignment.rotation_id = tgt_rotation
         tgt_assignment.rotation_id = req_rotation
+
+    async def _capture_assignments(self, swap: SwapRequest):
+        """Capture current rotation ids so we can restore on validation failure."""
+        result = await self.db.execute(
+            select(ScheduleAssignment)
+            .where(ScheduleAssignment.id.in_([
+                swap.requester_assignment_id,
+                swap.target_assignment_id
+            ]))
+        )
+        assignments = {a.id: a.rotation_id for a in result.scalars().all()}
+        return assignments
+
+    async def _restore_assignments(self, original: dict):
+        """Restore rotation ids after failed validation."""
+        if not original:
+            return
+        for assignment_id, rotation_id in original.items():
+            obj = await self.db.get(ScheduleAssignment, assignment_id)
+            if obj:
+                obj.rotation_id = rotation_id
 
     # ============== Queries ==============
 

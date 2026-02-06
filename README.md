@@ -6,8 +6,8 @@ A web application that generates personalized iCal calendar subscriptions from a
 
 - **Searchable resident lookup** - Find your name quickly with autocomplete
 - **iCal subscription URLs** - Subscribe in iOS Calendar, Google Calendar, Outlook, or any calendar app
-- **Automatic rotation rules** - Different schedules for ICU, Night, Clinic, and other rotations
-- **Live calendar updates** - When the schedule XLSX is updated, calendars refresh automatically
+- **DB as source of truth** - Excel is used only for import; calendars are generated from database records
+- **Hard rule validation** - Blocks schedule changes that violate Saturday week starts or duty-hour limits
 
 ## Quick Start
 
@@ -69,29 +69,38 @@ fly deploy
 
 ## Updating the Schedule
 
-1. Replace `schedule.xlsx` with the new file
-2. Restart the server, OR
-3. Call `POST /api/reload` to refresh without restart
+1. Log in to admin portal
+2. Upload XLSX through `POST /api/admin/schedule/import`
+3. If validation fails, API returns HTTP 400 with:
+   ```json
+   {
+     "status": "validation_failed",
+     "context": "excel_import",
+     "violations": []
+   }
+   ```
 
 ## API Endpoints
 
 - `GET /` - Web UI
 - `GET /api/residents` - List all resident names
-- `GET /api/calendar/{name}.ics` - Get iCal file for a resident
+- `GET /api/calendar/{identifier}.ics` - Get iCal file (calendar token, email, or DB resident name)
 - `GET /api/health` - Health check
-- `POST /api/reload` - Reload schedule from XLSX
+- `POST /api/admin/schedule/import` - Import schedule from XLSX (admin auth required)
 
 ## File Structure
 
 ```
 ├── app/
 │   ├── main.py          # FastAPI application
-│   ├── parser.py        # XLSX parsing logic
-│   ├── calendar_gen.py  # ICS generation
+│   ├── services/excel_import.py  # XLSX import into DB
+│   ├── services/calendar.py      # DB-backed ICS generation
+│   ├── services/validation.py    # Hard scheduling rules
 │   └── config.py        # Rotation rules
 ├── static/
 │   └── index.html       # Web UI
-├── schedule.xlsx        # Source data
+├── schedule.xlsx        # Import source data
+├── render.yaml          # Render free-tier deployment template
 ├── Dockerfile
 └── requirements.txt
 ```
@@ -99,4 +108,3 @@ fly deploy
 ## License
 
 MIT
-

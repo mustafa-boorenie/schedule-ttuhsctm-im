@@ -476,6 +476,8 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 0.25rem;
+            padding: 0.25rem;
             background: var(--bg-secondary);
             border-radius: 8px;
             cursor: pointer;
@@ -507,6 +509,17 @@
         .calendar-day-num {
             font-size: 0.875rem;
             font-weight: 500;
+            line-height: 1;
+        }
+
+        .calendar-day-rotation {
+            width: 100%;
+            font-size: 0.6rem;
+            color: var(--accent-primary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
         }
 
         /* Date Picker */
@@ -849,6 +862,9 @@
         let residentEmail = null;
         let residentData = null;
         let currentMonth = new Date();
+        let residentAssignments = [];
+        let assignmentsByDate = {};
+        let residentScheduleLoadedFor = null;
 
         // Get email from URL or localStorage
         const urlParams = new URLSearchParams(window.location.search);
@@ -870,6 +886,59 @@
         function formatDate(dateStr) {
             const date = new Date(dateStr);
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+
+        function toIsoDate(date) {
+            return date.toISOString().split('T')[0];
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
+        function abbreviateRotation(name) {
+            if (!name) return '';
+            if (name.length <= 10) return name;
+            return `${name.slice(0, 9)}...`;
+        }
+
+        function getRotationLabel(assignment) {
+            if (!assignment) return '';
+            return assignment.rotation_display_name
+                || assignment.rotation_name
+                || (assignment.rotation_id ? `Rotation ${assignment.rotation_id}` : 'Rotation');
+        }
+
+        function buildAssignmentsByDate(assignments) {
+            const map = {};
+            for (const assignment of assignments) {
+                if (!assignment.week_start || !assignment.week_end) continue;
+                const current = new Date(`${assignment.week_start}T00:00:00`);
+                const end = new Date(`${assignment.week_end}T00:00:00`);
+                while (current <= end) {
+                    map[toIsoDate(current)] = assignment;
+                    current.setDate(current.getDate() + 1);
+                }
+            }
+            return map;
+        }
+
+        async function ensureResidentSchedule() {
+            if (!residentData && residentEmail) {
+                residentData = await api(`/api/residents/lookup?email=${encodeURIComponent(residentEmail)}`);
+            }
+            if (!residentData?.id) return;
+            if (residentScheduleLoadedFor === residentData.id) return;
+
+            const data = await api(`/api/residents/${residentData.id}/schedule`);
+            residentAssignments = data.assignments || [];
+            assignmentsByDate = buildAssignmentsByDate(residentAssignments);
+            residentScheduleLoadedFor = residentData.id;
         }
 
         function showToast(message) {
@@ -967,7 +1036,7 @@
         async function loadTabData(tab) {
             switch(tab) {
                 case 'home': await loadHome(); break;
-                case 'schedule': renderCalendar(); break;
+                case 'schedule': await renderCalendar(); break;
                 case 'oncall': await loadCallSchedule(); break;
                 case 'all': await loadAllResidents(); break;
                 case 'swaps': await loadSwaps('mine'); break;
@@ -988,14 +1057,26 @@
                 if (!residentData && residentEmail) {
                     residentData = await api(`/api/residents/lookup?email=${encodeURIComponent(residentEmail)}`);
                 }
+                await ensureResidentSchedule();
                 $('#residentName').textContent = residentData?.name || residentEmail || 'Resident';
             } catch (e) {}
 
-            // Load today's schedule (placeholder - would need resident-specific endpoint)
-            $('#todayRotation').innerHTML = `
-                <span class="rotation-badge" style="background: var(--accent-primary);">Schedule</span>
-                <span class="text-muted">View your full schedule in the Calendar tab</span>
-            `;
+            // Load today's rotation
+            const todayKey = toIsoDate(today);
+            const todayAssignment = assignmentsByDate[todayKey];
+            if (todayAssignment) {
+                const rotationLabel = escapeHtml(getRotationLabel(todayAssignment));
+                const rotationColor = todayAssignment.rotation_color || 'var(--accent-primary)';
+                $('#todayRotation').innerHTML = `
+                    <span class="rotation-badge" style="background: ${rotationColor};">${rotationLabel}</span>
+                    <span class="text-muted">Assigned for today</span>
+                `;
+            } else {
+                $('#todayRotation').innerHTML = `
+                    <span class="rotation-badge" style="background: var(--text-muted);">No Rotation</span>
+                    <span class="text-muted">No schedule assignment for today</span>
+                `;
+            }
             $('#todayDetails').style.display = 'none';
 
             // Load call status for today
@@ -1032,6 +1113,7 @@
         }
 
         async function loadWeekPreview() {
+            await ensureResidentSchedule();
             const today = new Date();
             const startOfWeek = new Date(today);
             startOfWeek.setDate(today.getDate() - today.getDay());
@@ -1043,12 +1125,16 @@
                 const date = new Date(startOfWeek);
                 date.setDate(startOfWeek.getDate() + i);
                 const isToday = date.toDateString() === today.toDateString();
+                const assignment = assignmentsByDate[toIsoDate(date)];
+                const rotation = assignment
+                    ? abbreviateRotation(getRotationLabel(assignment))
+                    : '-';
 
                 html += `
                     <div class="week-day ${isToday ? 'today' : ''}">
                         <div class="week-day-name">${dayNames[i]}</div>
                         <div class="week-day-num">${date.getDate()}</div>
-                        <div class="week-day-rot">-</div>
+                        <div class="week-day-rot">${escapeHtml(rotation)}</div>
                     </div>
                 `;
             }
@@ -1081,7 +1167,8 @@
         });
 
         // ===== Calendar Tab =====
-        function renderCalendar() {
+        async function renderCalendar() {
+            await ensureResidentSchedule();
             const year = currentMonth.getFullYear();
             const month = currentMonth.getMonth();
             const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -1110,9 +1197,19 @@
             for (let day = 1; day <= totalDays; day++) {
                 const date = new Date(year, month, day);
                 const isToday = date.toDateString() === today.toDateString();
+                const dateKey = toIsoDate(date);
+                const assignment = assignmentsByDate[dateKey];
+                const hasAssignment = Boolean(assignment);
+                const rotationText = hasAssignment
+                    ? abbreviateRotation(getRotationLabel(assignment))
+                    : '';
+                const rotationHtml = hasAssignment
+                    ? `<div class="calendar-day-rotation">${escapeHtml(rotationText)}</div>`
+                    : '';
                 html += `
-                    <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${date.toISOString().split('T')[0]}">
+                    <div class="calendar-day ${isToday ? 'today' : ''} ${hasAssignment ? 'has-event' : ''}" data-date="${dateKey}">
                         <div class="calendar-day-num">${day}</div>
+                        ${rotationHtml}
                     </div>
                 `;
             }
@@ -1134,10 +1231,18 @@
         async function selectDay(dateStr) {
             $('#selectedDayCard').style.display = 'block';
             $('#selectedDayTitle').textContent = formatDate(dateStr);
+            const assignment = assignmentsByDate[dateStr];
 
             try {
                 const callData = await api(`/api/call-schedule?target_date=${dateStr}`);
                 let content = '';
+
+                if (assignment) {
+                    const rotationLabel = escapeHtml(getRotationLabel(assignment));
+                    content += `<div class="mb-1"><span class="rotation-badge" style="background: ${assignment.rotation_color || 'var(--accent-primary)'};">${rotationLabel}</span></div>`;
+                } else {
+                    content += '<p class="text-muted mb-1">No rotation assignment on this date.</p>';
+                }
 
                 if (callData.pre_call.length > 0) {
                     content += `<div class="mb-1"><span class="call-badge call-pre">Pre-Call</span></div>`;
@@ -1170,14 +1275,14 @@
             }
         }
 
-        $('#prevMonth').addEventListener('click', () => {
+        $('#prevMonth').addEventListener('click', async () => {
             currentMonth.setMonth(currentMonth.getMonth() - 1);
-            renderCalendar();
+            await renderCalendar();
         });
 
-        $('#nextMonth').addEventListener('click', () => {
+        $('#nextMonth').addEventListener('click', async () => {
             currentMonth.setMonth(currentMonth.getMonth() + 1);
-            renderCalendar();
+            await renderCalendar();
         });
 
         // ===== On Call Tab =====
