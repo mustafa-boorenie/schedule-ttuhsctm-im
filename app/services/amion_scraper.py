@@ -6,9 +6,11 @@ Uses Playwright for browser automation to handle JavaScript-rendered content.
 import asyncio
 import re
 from datetime import date, datetime, timedelta
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Set
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from calendar import monthrange
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 try:
     from playwright.async_api import async_playwright, Browser, Page
@@ -20,14 +22,23 @@ except ImportError:
 
 import httpx
 from bs4 import BeautifulSoup
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import (
     Resident, Attending, AttendingAssignment, CallAssignment,
-    AmionSyncLog, AcademicYear, DataSource, SyncStatus
+    AmionSyncLog, AcademicYear, DataSource, SyncStatus,
+    ScheduleAssignment, Rotation
 )
 from ..settings import settings
+
+
+def _add_months(year: int, month: int, offset: int) -> Tuple[int, int]:
+    """Add offset months to (year, month), returning normalized tuple."""
+    month_index = (year * 12 + (month - 1)) + offset
+    out_year = month_index // 12
+    out_month = (month_index % 12) + 1
+    return out_year, out_month
 
 
 @dataclass
@@ -91,6 +102,65 @@ class AmionScraper:
         self.browser: Optional[Browser] = None
         self._resident_cache: Dict[str, Resident] = {}
         self._attending_cache: Dict[str, Attending] = {}
+
+    @staticmethod
+    def _resolve_header_dates(
+        found_dates: List[Tuple[int, int, str]],
+        year: int,
+        month: int,
+        seen_month_start: bool,
+    ) -> Tuple[List[Tuple[int, date, str]], bool]:
+        """
+        Resolve per-column dates from a weekly Amion header row.
+
+        The row may include spillover from previous/next month. We rely on the
+        first appearance of day "1":
+        - first row containing 1 => previous month -> current month transition
+        - later row containing 1 => current month -> next month transition
+        """
+        resolved: List[Tuple[int, date, str]] = []
+        day1_idx: Optional[int] = None
+        for idx, (_, day_num, _) in enumerate(found_dates):
+            if day_num == 1:
+                day1_idx = idx
+                break
+
+        contains_day1 = day1_idx is not None
+        prev_year, prev_month = _add_months(year, month, -1)
+        next_year, next_month = _add_months(year, month, 1)
+
+        for order, (col_idx, day_num, label_text) in enumerate(found_dates):
+            entry_year = year
+            entry_month = month
+
+            if contains_day1 and not seen_month_start:
+                # First row with day 1: dates before "1" are from previous month.
+                if order < day1_idx:
+                    entry_year = prev_year
+                    entry_month = prev_month
+            elif contains_day1 and seen_month_start:
+                # Later row with day 1: dates from "1" onward are next month.
+                if order >= day1_idx:
+                    entry_year = next_year
+                    entry_month = next_month
+
+            try:
+                entry_date = date(entry_year, entry_month, day_num)
+            except ValueError:
+                continue
+
+            resolved.append((col_idx, entry_date, label_text))
+
+        return resolved, (seen_month_start or contains_day1)
+
+    @staticmethod
+    def _normalize_team_key(name: str) -> Optional[str]:
+        """Normalize team/rotation labels to one of the canonical hospitalist teams."""
+        text = re.sub(r"[^A-Z]", "", name.upper())
+        for key in ("RED", "BLUE", "GREEN", "ORANGE", "PURPLE"):
+            if key in text:
+                return key
+        return None
 
     async def _get_browser(self) -> Browser:
         """Get or create browser instance."""
@@ -206,7 +276,8 @@ class AmionScraper:
             rows = table.find_all('tr')
 
             # First, find header rows with dates
-            header_dates = []  # List of (column_index, day_num, full_text)
+            header_dates: List[Tuple[int, date, str]] = []
+            seen_month_start = False
 
             for row in rows:
                 cells = row.find_all(['th', 'td'])
@@ -224,7 +295,9 @@ class AmionScraper:
                             found_dates.append((idx, day_num, cell_text))
 
                 if len(found_dates) >= 5:
-                    header_dates = found_dates
+                    header_dates, seen_month_start = self._resolve_header_dates(
+                        found_dates, year, month, seen_month_start
+                    )
                     continue
 
                 if not header_dates:
@@ -257,23 +330,12 @@ class AmionScraper:
                 range_start = None
                 last_date = None
 
-                for header_idx, day_num, header_text in header_dates:
+                for header_idx, entry_date, header_text in header_dates:
                     if header_idx >= len(cells):
                         continue
 
                     cell = cells[header_idx]
                     cell_text = cell.get_text(strip=True)
-
-                    # Determine date
-                    try:
-                        if day_num > 20 and month == 1:
-                            entry_date = date(year - 1, 12, day_num)
-                        elif day_num > 20 and month > 1:
-                            entry_date = date(year, month - 1, day_num)
-                        else:
-                            entry_date = date(year, month, day_num)
-                    except ValueError:
-                        continue
 
                     # Skip dates, times
                     if re.match(r'^\d{1,2}\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat)', cell_text):
@@ -371,7 +433,8 @@ class AmionScraper:
             rows = table.find_all('tr')
 
             # First, find the header row with dates
-            header_dates = []  # List of (column_index, date) tuples
+            header_dates: List[Tuple[int, date, str]] = []
+            seen_month_start = False
 
             for row in rows:
                 cells = row.find_all(['th', 'td'])
@@ -391,7 +454,9 @@ class AmionScraper:
 
                 # If we found multiple dates in this row, it's likely a header
                 if len(found_dates) >= 5:
-                    header_dates = found_dates
+                    header_dates, seen_month_start = self._resolve_header_dates(
+                        found_dates, year, month, seen_month_start
+                    )
                     continue
 
                 # Process data rows using the header dates
@@ -419,7 +484,7 @@ class AmionScraper:
                     continue
 
                 # Now extract attending names from data cells
-                for header_idx, day_num, header_text in header_dates:
+                for header_idx, entry_date, header_text in header_dates:
                     # Adjust index based on where data starts
                     cell_idx = header_idx
                     if cell_idx >= len(cells):
@@ -435,21 +500,6 @@ class AmionScraper:
                     if re.match(r'^\d{1,2}\s*(Sun|Mon|Tue|Wed|Thu|Fri|Sat|Jan|Feb)', cell_text):
                         continue
                     if re.match(r'\d+[aApP]-\d+[aApP]', cell_text):
-                        continue
-
-                    # Determine the actual date
-                    # If day_num > 20 and we're looking at early month, it's previous month
-                    # If day_num < 10 and header mentions month name, use that
-                    try:
-                        if day_num > 20 and 'Jan' not in header_text and month == 1:
-                            # Previous month (December)
-                            entry_date = date(year - 1, 12, day_num)
-                        elif day_num > 20 and month > 1:
-                            # Previous month
-                            entry_date = date(year, month - 1, day_num)
-                        else:
-                            entry_date = date(year, month, day_num)
-                    except ValueError:
                         continue
 
                     # Create unique key to avoid duplicates
@@ -471,13 +521,13 @@ class AmionScraper:
         self,
         oncall_entries: List[OnCallEntry],
         team_attending_map: List[TeamAttendingAssignment],
-        residents_by_rotation: Dict[str, List[int]],  # rotation_name -> [resident_ids]
+        residents_by_team_date: Dict[Tuple[str, date], Set[int]],
     ) -> List[Dict]:
         """
         Generate call assignments by cross-referencing:
         1. Which attending is on-call (from oncall_entries)
         2. Which team that attending belongs to (from team_attending_map)
-        3. Which residents are on that rotation (from residents_by_rotation)
+        3. Which residents are on that team for that date
 
         Returns list of call assignment dicts with:
         - resident_id, date, call_type, attending_name
@@ -485,41 +535,33 @@ class AmionScraper:
         assignments = []
 
         # Build attending -> team lookup for each date
-        attending_to_team = {}  # (attending_name, date) -> team_name
+        attending_to_team: Dict[Tuple[str, date], str] = {}
         for ta in team_attending_map:
+            team_key = self._normalize_team_key(ta.team_name)
+            if not team_key:
+                continue
             current = ta.start_date
             while current <= ta.end_date:
-                attending_to_team[(ta.attending_name, current)] = ta.team_name
+                attending_to_team[(ta.attending_name, current)] = team_key
                 current += timedelta(days=1)
 
         # Process each on-call entry
-        processed_dates = set()
+        processed_entries: Set[Tuple[str, date]] = set()
         for oc in oncall_entries:
-            if oc.date in processed_dates:
+            oncall_key = (oc.attending_name, oc.date)
+            if oncall_key in processed_entries:
                 continue
 
             # Find which team this attending belongs to
-            team_name = attending_to_team.get((oc.attending_name, oc.date))
-
-            if not team_name:
-                # Try to find by just attending name (might be on multiple days)
-                for (att, dt), team in attending_to_team.items():
-                    if att == oc.attending_name:
-                        team_name = team
-                        break
-
-            if not team_name:
+            team_key = attending_to_team.get((oc.attending_name, oc.date))
+            if not team_key:
                 continue
 
-            # Find residents on this rotation/team
-            resident_ids = residents_by_rotation.get(team_name, [])
+            # Find residents on this team/date
+            resident_ids = sorted(residents_by_team_date.get((team_key, oc.date), set()))
 
             if not resident_ids:
-                # Try variations of the team name
-                for rotation_name, rids in residents_by_rotation.items():
-                    if team_name.lower() in rotation_name.lower() or rotation_name.lower() in team_name.lower():
-                        resident_ids = rids
-                        break
+                continue
 
             # Create assignments for each resident
             for rid in resident_ids:
@@ -552,7 +594,7 @@ class AmionScraper:
                     'service': oc.service,
                 })
 
-            processed_dates.add(oc.date)
+            processed_entries.add(oncall_key)
 
         return assignments
 
@@ -1184,6 +1226,198 @@ class AmionScraper:
                 results["errors"].append(f"Attending entry error: {e}")
 
         return results
+
+
+def extract_year_month_from_url(url: str) -> Optional[Tuple[int, int]]:
+    """
+    Extract target year/month from an Amion calendar URL.
+
+    Supports month query values like:
+    - month=2026-02-01
+    - month=2026-02
+    """
+    parsed = urlparse(url)
+    values = parse_qs(parsed.query).get("month", [])
+    if not values:
+        return None
+
+    raw = values[0].strip()
+    if not raw:
+        return None
+
+    match = re.match(r"^(?P<year>\d{4})-(?P<month>\d{1,2})(?:-\d{1,2})?$", raw)
+    if not match:
+        return None
+
+    year = int(match.group("year"))
+    month = int(match.group("month"))
+    if month < 1 or month > 12:
+        return None
+
+    return year, month
+
+
+def with_month_query(url: str, year: int, month: int) -> str:
+    """Return URL with month query set to YYYY-MM-01."""
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query)
+    query["month"] = [f"{year:04d}-{month:02d}-01"]
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(
+        (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+    )
+
+
+async def sync_hospitalist_call_schedule(
+    db: AsyncSession,
+    all_rows_url: str,
+    oncall_url: str,
+    *,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
+) -> Dict:
+    """
+    Sync resident pre/on/post-call assignments by attending->team cross-reference.
+
+    Flow:
+    1. Parse team-attending assignments from all_rows view.
+    2. Parse on-call attending schedule from filtered oncall view.
+    3. Map attending on-call date -> team on-call date.
+    4. Map team -> residents from monthly schedule assignments.
+    5. Persist pre-call (D-1), on-call (D), post-call (D+1) entries.
+    """
+    if year is None or month is None:
+        oncall_month = extract_year_month_from_url(oncall_url)
+        all_rows_month = extract_year_month_from_url(all_rows_url)
+        picked = oncall_month or all_rows_month
+        if picked:
+            year, month = picked
+        else:
+            today = date.today()
+            year, month = today.year, today.month
+
+    if month < 1 or month > 12:
+        raise ValueError(f"Invalid month: {month}")
+
+    scraper = AmionScraper(db)
+    try:
+        resolved_all_rows_url = with_month_query(all_rows_url, year, month)
+        resolved_oncall_url = with_month_query(oncall_url, year, month)
+
+        all_team_attending = await scraper.scrape_team_attending_schedule(
+            resolved_all_rows_url, year, month
+        )
+        hospitalist_teams = ["Red Team", "Blue Team", "Green Team", "Orange Team", "Purple Team"]
+        team_attending = [ta for ta in all_team_attending if ta.team_name in hospitalist_teams]
+
+        all_oncall_entries = await scraper.scrape_oncall_schedule(
+            resolved_oncall_url, year, month
+        )
+        oncall_entries = [
+            e for e in all_oncall_entries
+            if "Hospitalist" in e.service and e.date.year == year and e.date.month == month
+        ]
+
+        result = await db.execute(
+            select(AcademicYear).where(AcademicYear.is_current == True)
+        )
+        academic_year = result.scalar_one_or_none()
+
+        month_start = date(year, month, 1)
+        month_end = date(year, month, monthrange(year, month)[1])
+        sync_window_start = month_start - timedelta(days=1)
+        sync_window_end = month_end + timedelta(days=1)
+
+        result = await db.execute(
+            select(ScheduleAssignment, Rotation, Resident)
+            .join(Rotation, ScheduleAssignment.rotation_id == Rotation.id)
+            .join(Resident, ScheduleAssignment.resident_id == Resident.id)
+            .where(ScheduleAssignment.week_start <= month_end)
+            .where(ScheduleAssignment.week_end >= month_start)
+        )
+        schedule_data = result.all()
+
+        if not schedule_data:
+            raise ValueError(
+                f"No schedule assignments found for {year}-{month:02d}. "
+                "Import monthly resident schedule before running call sync."
+            )
+
+        residents_by_team_date: Dict[Tuple[str, date], Set[int]] = {}
+        for assignment, rotation, resident in schedule_data:
+            team_key = scraper._normalize_team_key(rotation.name)
+            if not team_key:
+                continue
+            current = max(assignment.week_start, month_start)
+            assignment_end = min(assignment.week_end, month_end)
+            while current <= assignment_end:
+                residents_by_team_date.setdefault((team_key, current), set()).add(resident.id)
+                current += timedelta(days=1)
+
+        call_assignments = scraper.generate_call_assignments_for_residents(
+            oncall_entries,
+            team_attending,
+            residents_by_team_date,
+        )
+
+        # Replace monthly hospitalist AMION assignments to avoid stale rows after re-syncs.
+        delete_result = await db.execute(
+            delete(CallAssignment)
+            .where(CallAssignment.source == DataSource.AMION)
+            .where(CallAssignment.service == "Hospitalist On-Call")
+            .where(CallAssignment.date >= sync_window_start)
+            .where(CallAssignment.date <= sync_window_end)
+        )
+        deleted = delete_result.rowcount or 0
+
+        created = 0
+        updated = 0
+        for ca in call_assignments:
+            existing = await db.execute(
+                select(CallAssignment).where(
+                    CallAssignment.resident_id == ca["resident_id"],
+                    CallAssignment.date == ca["date"],
+                    CallAssignment.call_type == ca["call_type"],
+                )
+            )
+            existing = existing.scalar_one_or_none()
+
+            if existing:
+                existing.service = ca.get("service")
+                existing.attending_name = ca.get("attending_name")
+                existing.source = DataSource.AMION
+                updated += 1
+            else:
+                db.add(
+                    CallAssignment(
+                        resident_id=ca["resident_id"],
+                        date=ca["date"],
+                        call_type=ca["call_type"],
+                        service=ca.get("service"),
+                        attending_name=ca.get("attending_name"),
+                        academic_year_id=academic_year.id if academic_year else None,
+                        source=DataSource.AMION,
+                    )
+                )
+                created += 1
+
+        return {
+            "status": "success",
+            "target_year": year,
+            "target_month": month,
+            "all_rows_url_used": resolved_all_rows_url,
+            "oncall_url_used": resolved_oncall_url,
+            "team_attending_found": len(team_attending),
+            "oncall_entries_found": len(oncall_entries),
+            "schedule_rows_for_month": len(schedule_data),
+            "rotations_in_db": sorted(list({rotation.name for _, rotation, _ in schedule_data})),
+            "call_assignments_generated": len(call_assignments),
+            "deleted": deleted,
+            "created": created,
+            "updated": updated,
+        }
+    finally:
+        await scraper.close()
 
 
 async def run_amion_sync(

@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # Amion
     amion_base_url: str = ""
     amion_sync_hour: int = 3  # 3 AM daily sync
+    amion_all_rows_url: str = ""
+    amion_oncall_url: str = ""
 
     # Schedule settings
     schedule_start_year: int = 2025

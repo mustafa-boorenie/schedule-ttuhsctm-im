@@ -80,6 +80,15 @@ fly deploy
    }
    ```
 
+For one-time legacy migration (when the source spreadsheet violates new hard rules),
+use:
+
+```bash
+python scripts/bootstrap_import_schedule.py --xlsx schedule.xlsx --allow-hard-violations
+```
+
+After this bootstrap step, keep using normal admin imports so hard rules stay enforced.
+
 ## API Endpoints
 
 - `GET /` - Web UI

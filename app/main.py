@@ -164,12 +164,17 @@ def _should_start_scheduler() -> bool:
 
 @app.get("/api/residents")
 async def list_residents(db: AsyncSession = Depends(get_db)):
-    """Get list of all resident names for the search dropdown (DB is sole source)."""
-    result = await db.execute(
-        select(Resident)
-        .where(Resident.is_active == True)
-        .order_by(Resident.name)
+    """Get resident names for the search dropdown (DB is sole source)."""
+    current_year = await db.execute(
+        select(AcademicYear).where(AcademicYear.is_current == True)
     )
+    academic_year = current_year.scalar_one_or_none()
+
+    query = select(Resident).where(Resident.is_active == True)
+    if academic_year:
+        query = query.where(Resident.academic_year_id == academic_year.id)
+
+    result = await db.execute(query.order_by(Resident.name))
     residents = result.scalars().all()
     return {"residents": [r.name for r in residents]}
 
