@@ -5,6 +5,7 @@ A web application that generates personalized iCal calendar subscriptions from a
 ## Features
 
 - **Searchable resident lookup** - Find your name quickly with autocomplete
+- **Rotation roster on the home screen** - See who is on each rotation for any date, filter by rotation or name, and jump straight to that resident's calendar link
 - **iCal subscription URLs** - Subscribe in iOS Calendar, Google Calendar, Outlook, or any calendar app
 - **DB as source of truth** - Excel is used only for import; calendars are generated from database records
 - **Hard rule validation** - Blocks schedule changes that violate Saturday week starts or duty-hour limits
@@ -93,6 +94,10 @@ After this bootstrap step, keep using normal admin imports so hard rules stay en
 
 - `GET /` - Web UI
 - `GET /api/residents` - List all resident names
+- `GET /api/rotations` - List rotation types (id, name, display name, color, location)
+- `GET /api/rotations/roster?target_date=YYYY-MM-DD&rotation=ICU` - Who is on which rotation
+  for a date (defaults to today). Residents are grouped by rotation; anyone with a day off
+  covering that date is flagged via `day_off`. `rotation` is an optional exact-name filter.
 - `GET /api/calendar/{identifier}.ics` - Get iCal file (calendar token, email, or DB resident name)
 - `GET /api/health` - Health check
 - `POST /api/admin/schedule/import` - Import schedule from XLSX (admin auth required)
