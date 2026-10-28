@@ -14,7 +14,7 @@ from fastapi import FastAPI, HTTPException, Request, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db, init_db, close_db
@@ -25,7 +25,15 @@ from .middleware import (
     RequestLoggingMiddleware,
     SecurityHeadersMiddleware,
 )
-from .models import Resident, Rotation, ScheduleAssignment, AcademicYear, Admin
+from .models import (
+    Resident,
+    Rotation,
+    ScheduleAssignment,
+    AcademicYear,
+    Admin,
+    DayOff,
+    DayOffType,
+)
 from .routers import admin_auth_router, admin_router, schedule_router, amion_router, days_off_router, swap_router, resident_auth_router
 from .routers.admin_auth import require_admin
 from .services.excel_import import ExcelImportService, seed_default_day_off_types
@@ -37,6 +45,7 @@ from .services.resident_lookup import (
     get_resident_by_email,
     get_resident_by_name,
 )
+from .config import SKIP_ROTATIONS
 from .settings import settings
 import json
 
@@ -230,6 +239,131 @@ async def get_resident_schedule(
             }
             for assignment, rotation in assignments
         ]
+    }
+
+
+# ============== Rotation Roster (who is on which rotation) ==============
+
+@app.get("/api/rotations")
+async def list_rotations(db: AsyncSession = Depends(get_db)):
+    """Get rotation types for the roster filter dropdown."""
+    result = await db.execute(select(Rotation).order_by(Rotation.name))
+    rotations = result.scalars().all()
+    return {
+        "rotations": [
+            {
+                "id": rotation.id,
+                "name": rotation.name,
+                "display_name": rotation.display_name or rotation.name,
+                "color": rotation.color,
+                "location": rotation.location,
+            }
+            for rotation in rotations
+        ]
+    }
+
+
+@app.get("/api/rotations/roster")
+async def get_rotation_roster(
+    target_date: Optional[date] = None,
+    rotation: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get who is on each rotation for a date (defaults to today).
+
+    Public endpoint powering the home-page rotation lookup. Assignments are
+    weekly, so every active resident whose assignment week covers the target
+    date is grouped under their rotation. Residents with an approved day off
+    covering the date are flagged but still listed under their rotation.
+    """
+    if target_date is None:
+        target_date = date.today()
+
+    query = (
+        select(ScheduleAssignment, Rotation, Resident)
+        .join(Rotation, ScheduleAssignment.rotation_id == Rotation.id)
+        .join(Resident, ScheduleAssignment.resident_id == Resident.id)
+        .where(
+            ScheduleAssignment.week_start <= target_date,
+            ScheduleAssignment.week_end >= target_date,
+            Resident.is_active == True,
+        )
+        .order_by(Rotation.name, Resident.name)
+    )
+
+    rotation_filter = rotation.strip() if rotation else None
+    if rotation_filter:
+        query = query.where(func.lower(Rotation.name) == rotation_filter.lower())
+
+    rows = (await db.execute(query)).all()
+
+    # Days off covering the target date, so someone on vacation is marked as away
+    days_off_rows = (
+        await db.execute(
+            select(DayOff, DayOffType)
+            .join(DayOffType, DayOff.type_id == DayOffType.id)
+            .where(
+                DayOff.start_date <= target_date,
+                DayOff.end_date >= target_date,
+            )
+        )
+    ).all()
+    days_off_by_resident = {
+        day_off.resident_id: day_off_type.name for day_off, day_off_type in days_off_rows
+    }
+
+    groups: dict[int, dict] = {}
+    week_start: Optional[date] = None
+    week_end: Optional[date] = None
+
+    for assignment, rotation_row, resident in rows:
+        group = groups.get(rotation_row.id)
+        if group is None:
+            group = {
+                "rotation_id": rotation_row.id,
+                "name": rotation_row.name,
+                "display_name": rotation_row.display_name or rotation_row.name,
+                "color": rotation_row.color,
+                "location": rotation_row.location,
+                "generates_events": rotation_row.generates_events,
+                "residents": [],
+            }
+            groups[rotation_row.id] = group
+
+        group["residents"].append(
+            {
+                "resident_id": resident.id,
+                "name": resident.name,
+                "pgy_level": resident.pgy_level.value if resident.pgy_level else None,
+                "week_start": assignment.week_start.isoformat(),
+                "week_end": assignment.week_end.isoformat(),
+                "day_off": days_off_by_resident.get(resident.id),
+            }
+        )
+
+        if week_start is None or assignment.week_start < week_start:
+            week_start = assignment.week_start
+        if week_end is None or assignment.week_end > week_end:
+            week_end = assignment.week_end
+
+    def sort_key(group: dict) -> tuple:
+        # Non-clinical buckets (vacation, research) sort to the bottom
+        is_non_clinical = group["name"] in SKIP_ROTATIONS or not group["generates_events"]
+        return (1 if is_non_clinical else 0, group["display_name"].lower())
+
+    ordered_groups = sorted(groups.values(), key=sort_key)
+    for group in ordered_groups:
+        group["resident_count"] = len(group["residents"])
+
+    return {
+        "date": target_date.isoformat(),
+        "date_formatted": target_date.strftime("%A, %B %d, %Y"),
+        "week_start": week_start.isoformat() if week_start else None,
+        "week_end": week_end.isoformat() if week_end else None,
+        "rotation_filter": rotation_filter,
+        "total_residents": sum(group["resident_count"] for group in ordered_groups),
+        "rotations": ordered_groups,
     }
 
 @app.get("/api/calendar/by-email.ics")

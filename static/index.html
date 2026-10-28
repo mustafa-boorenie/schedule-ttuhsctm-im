@@ -380,6 +380,215 @@
             border-radius: 10px;
             text-align: center;
         }
+
+        /* ===== Rotation roster ===== */
+        .roster-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.25rem;
+        }
+
+        .roster-head h2 {
+            font-size: 1.05rem;
+            font-weight: 600;
+        }
+
+        .roster-day {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+
+        .roster-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .roster-nav {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            width: 2.25rem;
+            height: 2.25rem;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            line-height: 1;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .roster-nav:hover,
+        .roster-today:hover {
+            border-color: var(--accent-primary);
+            color: var(--text-primary);
+        }
+
+        .roster-today {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0 0.875rem;
+            height: 2.25rem;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #roster-date {
+            flex: 1;
+            min-width: 9.5rem;
+            height: 2.25rem;
+            padding: 0 0.75rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            outline: none;
+            color-scheme: dark;
+        }
+
+        #roster-date:focus,
+        #roster-filter:focus {
+            border-color: var(--accent-primary);
+        }
+
+        #roster-filter {
+            width: 100%;
+            padding: 0.75rem 0.875rem 0.75rem 2.5rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            outline: none;
+        }
+
+        #roster-filter::placeholder {
+            color: var(--text-muted);
+        }
+
+        .roster-filter-wrapper {
+            position: relative;
+            margin-bottom: 1.25rem;
+        }
+
+        .roster-filter-wrapper .search-icon {
+            left: 0.875rem;
+        }
+
+        #roster-results {
+            max-height: 26rem;
+            overflow-y: auto;
+        }
+
+        .rotation-group {
+            border-top: 1px solid var(--border-color);
+            padding: 1rem 0;
+        }
+
+        .rotation-group:first-child {
+            border-top: none;
+            padding-top: 0;
+        }
+
+        .rotation-group:last-child {
+            padding-bottom: 0;
+        }
+
+        .rotation-group-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .rotation-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .rotation-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .rotation-location {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+
+        .rotation-count {
+            margin-left: auto;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .resident-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .resident-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 0.4rem 0.75rem;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .resident-chip:hover {
+            border-color: var(--accent-primary);
+            background: rgba(6, 182, 212, 0.1);
+        }
+
+        .resident-chip.away {
+            opacity: 0.6;
+        }
+
+        .pgy-badge {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--accent-secondary);
+            background: rgba(6, 182, 212, 0.12);
+            border-radius: 5px;
+            padding: 0.1rem 0.35rem;
+        }
+
+        .away-badge {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            padding: 0.1rem 0.35rem;
+        }
+
+        .roster-empty {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+            text-align: center;
+            padding: 1.5rem 0;
+        }
     </style>
 </head>
 <body>
@@ -469,7 +678,30 @@
         </div>
 
         <div id="error" class="card error-message" style="display: none;"></div>
-    </div>
+
+        <div class="card" id="roster-card">
+            <div class="roster-head">
+                <h2>Who's on which rotation</h2>
+                <span class="roster-day" id="roster-day"></span>
+            </div>
+
+            <div class="roster-controls">
+                <button class="roster-nav" id="roster-prev" aria-label="Previous week" title="Previous week">&lsaquo;</button>
+                <input type="date" id="roster-date" aria-label="Rotation date">
+                <button class="roster-nav" id="roster-next" aria-label="Next week" title="Next week">&rsaquo;</button>
+                <button class="roster-today" id="roster-today">Today</button>
+            </div>
+
+            <div class="roster-filter-wrapper">
+                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.3-4.3"></path>
+                </svg>
+                <input type="text" id="roster-filter" placeholder="Filter by rotation or name..." autocomplete="off">
+            </div>
+
+            <div id="roster-results"></div>
+        </div>
 
         <div class="card" style="text-align: center; padding: 1.5rem;">
             <p style="color: var(--text-secondary); margin-bottom: 1rem;">Want more features?</p>
@@ -678,8 +910,138 @@
             });
         });
 
+        // ===== Rotation roster =====
+        const rosterDateInput = document.getElementById('roster-date');
+        const rosterDayEl = document.getElementById('roster-day');
+        const rosterResults = document.getElementById('roster-results');
+        const rosterFilterInput = document.getElementById('roster-filter');
+
+        let rosterData = null;
+        let rosterRequestId = 0;
+
+        function escapeHtml(value) {
+            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+            return String(value === null || value === undefined ? '' : value)
+                .replace(/[&<>"']/g, ch => map[ch]);
+        }
+
+        function todayISO() {
+            const now = new Date();
+            const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+            return local.toISOString().split('T')[0];
+        }
+
+        function shiftDate(isoDate, days) {
+            const [year, month, day] = isoDate.split('-').map(Number);
+            const shifted = new Date(Date.UTC(year, month - 1, day));
+            shifted.setUTCDate(shifted.getUTCDate() + days);
+            return shifted.toISOString().split('T')[0];
+        }
+
+        async function loadRoster(dateStr) {
+            const requestId = ++rosterRequestId;
+            rosterResults.innerHTML = '<div class="roster-empty">Loading rotations...</div>';
+
+            try {
+                const response = await fetch(`/api/rotations/roster?target_date=${encodeURIComponent(dateStr)}`);
+                if (!response.ok) throw new Error('Failed to load rotations');
+
+                const data = await response.json();
+                if (requestId !== rosterRequestId) return;
+
+                rosterData = data;
+                rosterDayEl.textContent = data.date_formatted || '';
+                renderRoster();
+            } catch (err) {
+                if (requestId !== rosterRequestId) return;
+                rosterData = null;
+                rosterDayEl.textContent = '';
+                rosterResults.innerHTML = '<div class="roster-empty">Could not load rotations. Please try again.</div>';
+                console.error(err);
+            }
+        }
+
+        function renderRoster() {
+            if (!rosterData) return;
+
+            const query = rosterFilterInput.value.trim().toLowerCase();
+            const groups = rosterData.rotations
+                .map(group => {
+                    const rotationMatches = !query
+                        || group.display_name.toLowerCase().includes(query)
+                        || group.name.toLowerCase().includes(query);
+                    const residents = rotationMatches
+                        ? group.residents
+                        : group.residents.filter(r => r.name.toLowerCase().includes(query));
+                    return { ...group, residents };
+                })
+                .filter(group => group.residents.length > 0);
+
+            if (groups.length === 0) {
+                rosterResults.innerHTML = `<div class="roster-empty">${
+                    rosterData.rotations.length === 0
+                        ? 'No rotation assignments found for this date.'
+                        : 'No rotations or residents match that filter.'
+                }</div>`;
+                return;
+            }
+
+            rosterResults.innerHTML = groups.map(group => `
+                <div class="rotation-group">
+                    <div class="rotation-group-header">
+                        <span class="rotation-dot" style="background: ${escapeHtml(group.color || '#06b6d4')}"></span>
+                        <span class="rotation-name">${escapeHtml(group.display_name)}</span>
+                        ${group.location ? `<span class="rotation-location">${escapeHtml(group.location)}</span>` : ''}
+                        <span class="rotation-count">${group.residents.length}</span>
+                    </div>
+                    <div class="resident-chips">
+                        ${group.residents.map(resident => `
+                            <button type="button" class="resident-chip${resident.day_off ? ' away' : ''}" data-name="${escapeHtml(resident.name)}" title="Get the calendar link for ${escapeHtml(resident.name)}">
+                                <span>${escapeHtml(resident.name)}</span>
+                                ${resident.pgy_level ? `<span class="pgy-badge">${escapeHtml(resident.pgy_level)}</span>` : ''}
+                                ${resident.day_off ? `<span class="away-badge">${escapeHtml(resident.day_off)}</span>` : ''}
+                            </button>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        rosterFilterInput.addEventListener('input', renderRoster);
+
+        rosterDateInput.addEventListener('change', () => {
+            if (rosterDateInput.value) {
+                loadRoster(rosterDateInput.value);
+            }
+        });
+
+        document.getElementById('roster-prev').addEventListener('click', () => {
+            rosterDateInput.value = shiftDate(rosterDateInput.value || todayISO(), -7);
+            loadRoster(rosterDateInput.value);
+        });
+
+        document.getElementById('roster-next').addEventListener('click', () => {
+            rosterDateInput.value = shiftDate(rosterDateInput.value || todayISO(), 7);
+            loadRoster(rosterDateInput.value);
+        });
+
+        document.getElementById('roster-today').addEventListener('click', () => {
+            rosterDateInput.value = todayISO();
+            loadRoster(rosterDateInput.value);
+        });
+
+        // Jump from a roster chip to that resident's subscription URL
+        rosterResults.addEventListener('click', (e) => {
+            const chip = e.target.closest('.resident-chip');
+            if (!chip) return;
+            selectResident(chip.dataset.name);
+            document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+
         // Initialize
         loadResidents();
+        rosterDateInput.value = todayISO();
+        loadRoster(rosterDateInput.value);
     </script>
 </body>
 </html>
